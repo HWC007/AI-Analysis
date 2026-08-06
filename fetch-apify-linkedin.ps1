@@ -110,6 +110,9 @@ $newProfiles = for ($i = 0; $i -lt $rawItems.Count; $i++) {
         Past_Position_3                 = Get-Value $past3 'title'
         Past_Position_3_Description     = Get-Value $past3 'description'
         Past_Position_3_Tenure           = Get-Value $past3 'duration'
+        AI_Judgement                    = ''
+        AI_Weighting                    = ''
+        AI_Explanation                  = ''
         createdAt                       = (Get-Date).ToUniversalTime().ToString('o')
         updatedAt                       = (Get-Date).ToUniversalTime().ToString('o')
     }
@@ -118,6 +121,15 @@ $newProfiles = for ($i = 0; $i -lt $rawItems.Count; $i++) {
 $existing = @()
 if ((-not $Replace) -and (Test-Path -LiteralPath $OutputPath -PathType Leaf)) {
     $existing = @(Import-Csv -LiteralPath $OutputPath)
+}
+
+# Upgrade older output files that were created before the AI columns existed.
+foreach ($old in $existing) {
+    foreach ($column in @('AI_Judgement', 'AI_Weighting', 'AI_Explanation')) {
+        if ($null -eq $old.PSObject.Properties[$column]) {
+            $old | Add-Member -NotePropertyName $column -NotePropertyValue ''
+        }
+    }
 }
 
 $nextId = $StartingId

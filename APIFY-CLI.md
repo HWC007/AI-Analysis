@@ -1,6 +1,6 @@
 # Apify LinkedIn CLI export
 
-This reproduces the n8n mapping from the LinkedIn scraper into the same 32-column structure as `Apify.csv`, excluding `AI_Judgement`, `AI_Weighting`, and `AI_Explanation`.
+This reproduces the n8n mapping from the LinkedIn scraper into the same structure as `Apify.csv`. It includes the three blank AI fields required by the qualification workflow: `AI_Judgement`, `AI_Weighting`, and `AI_Explanation`.
 
 ## Run on Windows
 
@@ -18,7 +18,7 @@ $env:APIFY_TOKEN = 'paste-a-new-apify-token-here'
 
 Prepare an input file based on [apify-input.example.json](apify-input.example.json), replacing the example URL with the LinkedIn URLs to scrape.
 
-Run the export. Existing output is preserved by default; new profiles are appended and duplicate LinkedIn URLs are skipped:
+Run the export. Existing output is preserved by default; new profiles are appended, duplicate LinkedIn URLs are skipped, and new AI fields are left blank for n8n to populate:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\fetch-apify-linkedin.ps1 `
