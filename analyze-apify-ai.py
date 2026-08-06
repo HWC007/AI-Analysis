@@ -86,8 +86,25 @@ def normalize(result):
     return result
 
 
-def call(base_url, model, key, profile, retries):
-    body = {"model": model, "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": "Prospect data:\n" + json.dumps(profile, ensure_ascii=False)}]}
+def search_company(base_url, model, key, company, retries):
+    prompt = (f"Research {company}. Find the official website and reliable sources describing its business activities, products, services, industries, and any evidence of injection-mold design, injection-molded plastic production, molding equipment, plastics engineering, Moldflow, Cadmould, or Moldex3D. Return a concise evidence-based report with source URLs. Distinguish confirmed facts from uncertainty.")
+    body = {"model": model, "tools": [{"type": "web_search_preview"}], "input": prompt}
+    request = urllib.request.Request(base_url.rstrip("/") + "/responses", data=json.dumps(body).encode(), headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"}, method="POST")
+    for attempt in range(retries):
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response: data = json.loads(response.read().decode())
+            if data.get("output_text"): return data["output_text"]
+            texts = [content.get("text", "") for output in data.get("output", []) for content in output.get("content", []) if content.get("type") == "output_text"]
+            if texts: return "\n".join(texts)
+            raise RuntimeError("GPT-4o web search returned no text")
+        except Exception as exc:
+            if attempt == retries - 1: raise RuntimeError(f"GPT-4o web search failed: {exc}")
+            time.sleep(min(30, 2 ** (attempt + 1)))
+
+
+def call(base_url, model, key, profile, research, retries):
+    user_content = "GPT-4o WEB RESEARCH FOR PRIORITY 1:\n" + research + "\n\nPROSPECT DATA:\n" + json.dumps(profile, ensure_ascii=False)
+    body = {"model": model, "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_content}]}
     request = urllib.request.Request(base_url.rstrip("/") + "/chat/completions", data=json.dumps(body).encode(), headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"}, method="POST")
     for attempt in range(retries):
         try:
@@ -104,15 +121,31 @@ def main():
     parser.add_argument("--input", default=".\\Apify-raw-structured.csv"); parser.add_argument("--output", default=".\\Apify-raw-structured.csv")
     parser.add_argument("--api-key-file", default=".\\openai-api.txt"); parser.add_argument("--api-key", default="")
     parser.add_argument("--base-url", default="http://ai.moldex3d.com:4000/v1"); parser.add_argument("--model", default="gpt-5.6-luna")
+    parser.add_argument("--research-model", default="gpt-4o", help="Model used with /responses and web_search_preview")
+    parser.add_argument("--no-web-search", action="store_true")
     parser.add_argument("--batch-size", type=int, default=10); parser.add_argument("--max-retries", type=int, default=3); parser.add_argument("--reanalyze-all", action="store_true")
     args = parser.parse_args()
     with open(args.input, newline="", encoding="utf-8-sig") as f: rows = list(csv.DictReader(f))
     targets = [r for r in rows if args.reanalyze_all or not r.get("AI_Judgement", "").strip() or r.get("AI_Judgement") == "Error"]
     key = token_value(args.api_key, args.api_key_file); print(f"Profiles to analyze: {len(targets)}")
+    research_cache = {}
     for index, row in enumerate(targets, 1):
         profile = {k: (re.sub("\\u00b7", "-", str(v)) if k.endswith("Tenure") else str(v)) for k, v in row.items() if k not in {"AI_Judgement", "AI_Weighting", "AI_Explanation", "createdAt", "updatedAt"}}
         try:
-            result = call(args.base_url, args.model, key, profile, args.max_retries)
+            company = str(row.get("Current_Company", "")).strip()
+            company_key = company.casefold()
+            if args.no_web_search:
+                research = "Web search disabled by command-line option."
+            elif company_key in research_cache:
+                research = research_cache[company_key]
+            else:
+                try:
+                    research = search_company(args.base_url, args.research_model, key, company, args.max_retries)
+                except Exception as search_error:
+                    research = f"Web research failed: {search_error}"
+                research_cache[company_key] = research
+                print(f"Company research cached: {company}")
+            result = call(args.base_url, args.model, key, profile, research, args.max_retries)
             p1, p2, p3, p4, p5 = (bool(result.get(k)) for k in ["priority_1_satisfied", "priority_2_satisfied", "priority_3_satisfied", "priority_4_satisfied", "priority_5_satisfied"])
             p4_score = 0.05 if result.get("p4_in_other_sections") else 0.025 if result.get("p4_in_skills_only") else 0
             row["AI_Judgement"] = "Yes" if p1 or p2 or p3 or p5 else "No"

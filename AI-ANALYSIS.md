@@ -28,6 +28,8 @@ python .\analyze-apify-ai.py `
 
 The default endpoint is `http://ai.moldex3d.com:4000/v1` and the default model is `luna`. Override them with `-BaseUrl` and `-Model` when needed. The endpoint must expose an OpenAI-compatible `/chat/completions` route.
 
+The Python analyzer uses two stages: `gpt-4o` calls `/responses` with `web_search_preview` to research each unique company, then `gpt-5.6-luna` analyzes the profile using that cached research. Use `--research-model` to change the research model or `--no-web-search` to disable it intentionally.
+
 ## Analysis task
 
 You are a prospect qualification specialist for injection-molding manufacturers and professionals.
