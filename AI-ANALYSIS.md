@@ -1,6 +1,6 @@
 # GPT-5 prospect analysis
 
-`analyze-apify-ai.ps1` is separate from the Apify fetch script. It reads the structured CSV, analyzes blank AI rows with GPT-5, and updates the same file in place. Existing nonblank AI rows are preserved unless `-ReanalyzeAll` is supplied.
+`analyze-apify-ai.ps1` is separate from the Apify fetch script. It reads the structured CSV, analyzes blank AI rows with GPT-5 and web search, and updates the same file in place. Existing nonblank AI rows are preserved unless `-ReanalyzeAll` is supplied.
 
 Create `openai-api.txt` containing only an OpenAI API key. The file is ignored by Git.
 
@@ -18,7 +18,7 @@ To re-run every profile:
 powershell.exe -ExecutionPolicy Bypass -File .\analyze-apify-ai.ps1 -ReanalyzeAll
 ```
 
-The script saves after each batch so an interrupted run keeps completed work. API keys and generated CSV files must not be committed to a public repository.
+The script saves after each batch so an interrupted run keeps completed work. Priority 1 is not a name-based guess: when the profile is not conclusive, GPT-5 is instructed to research the company online using the built-in web search tool and cite the evidence in its explanation. API keys and generated CSV files must not be committed to a public repository.
 
 ## Analysis task description
 

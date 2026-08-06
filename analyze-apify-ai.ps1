@@ -26,7 +26,7 @@ You are a prospect qualification specialist for injection molding manufacturers 
 Evaluate EVERY prospect against ALL FIVE priorities. Do not stop after finding a match. Translate non-English text internally before analyzing it. Use all supplied tenure fields to understand the timeline. Do not invent facts. If company identity is uncertain, state that limitation clearly.
 
 PRIORITY 1 — COMPANY ANALYSIS
-Analyze Current_Company. Determine whether it is involved in the injection-molding lifecycle through: (a) service providers that design/build molds, produce molded parts for others, or make molding equipment; (b) product manufacturers/OEMs whose physical products heavily use plastic components; or (c) simulation and engineering providers for plastic parts. Give a detailed company-specific explanation and identify the category, if applicable.
+Analyze Current_Company. Determine whether it is involved in the injection-molding lifecycle through: (a) service providers that design/build molds, produce molded parts for others, or make molding equipment; (b) product manufacturers/OEMs whose physical products heavily use plastic components; or (c) simulation and engineering providers for plastic parts. You MUST use web search to research the current company whenever the supplied profile does not make the classification 100% certain. Search the company name together with relevant terms such as injection molding, plastic parts, tooling, mold design, products, manufacturing, and engineering. Prefer the company’s official website and reliable industry sources. Do not guess from the company name alone. State what was searched and summarize the evidence or explain why the evidence remains inconclusive. Give a detailed company-specific explanation and identify the category, if applicable.
 
 PRIORITY 2 — CURRENT POSITION ANALYSIS
 Analyze Current_Position, Current_Position_Description, Headline, and Current_Tenure. Determine whether the current role involves injection molding. For a service provider or simulation/engineering company, apply high inference to technical/design roles. For an OEM, do not assume: require plastic-specific evidence such as plastic-part design, lightweight components, enclosures, tooling, injection molding, Moldflow, or Cadmould. Explain the exact evidence or its absence.
@@ -68,19 +68,23 @@ function Invoke-Qualification {
     param([hashtable]$Profile)
     $payload = @{
         model = $Model
-        messages = @(
-            @{ role = 'system'; content = $systemPrompt },
-            @{ role = 'user'; content = ('Prospect data:`n' + ($Profile | ConvertTo-Json -Depth 10)) }
+        tools = @(@{ type = 'web_search_preview' })
+        input = @(
+            @{ role = 'system'; content = @(@{ type = 'input_text'; text = $systemPrompt }) },
+            @{ role = 'user'; content = @(@{ type = 'input_text'; text = ('Prospect data:`n' + ($Profile | ConvertTo-Json -Depth 10)) }) }
         )
-        response_format = @{ type = 'json_schema'; json_schema = @{ name = 'prospect_qualification'; strict = $true; schema = ($schema | ConvertFrom-Json) } }
+        text = @{ format = @{ type = 'json_schema'; name = 'prospect_qualification'; strict = $true; schema = ($schema | ConvertFrom-Json) } }
     }
     $body = $payload | ConvertTo-Json -Depth 20
-    $uri = 'https://api.openai.com/v1/chat/completions'
+    $uri = 'https://api.openai.com/v1/responses'
     $headers = @{ Authorization = "Bearer $OpenAIKey" }
     for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
         try {
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -ContentType 'application/json' -Body $body
-            return ($response.choices[0].message.content | ConvertFrom-Json)
+            if ($response.output_text) { return ($response.output_text | ConvertFrom-Json) }
+            $jsonText = @($response.output | ForEach-Object { @($_.content) } | Where-Object { $_.type -eq 'output_text' } | Select-Object -ExpandProperty text) -join ''
+            if ($jsonText) { return ($jsonText | ConvertFrom-Json) }
+            throw 'The Responses API returned no structured output.'
         } catch {
             if ($attempt -eq $MaxRetries) { throw }
             Start-Sleep -Seconds ([math]::Min(30, [math]::Pow(2, $attempt)))
