@@ -5,7 +5,7 @@ param(
     [string]$ApiKeyPath = '.\openai-api.txt',
     [string]$OpenAIKey = $env:OPENAI_API_KEY,
     [string]$BaseUrl = 'http://ai.moldex3d.com:4000/v1',
-    [string]$Model = 'luna',
+    [string]$Model = 'gpt-5.6-luna',
     [int]$BatchSize = 10,
     [int]$MaxRetries = 3,
     [switch]$ReanalyzeAll
@@ -65,6 +65,14 @@ $schema = @{
     required = @('judgement','priority_1_satisfied','priority_2_satisfied','priority_3_satisfied','priority_4_satisfied','priority_5_satisfied','p4_in_skills_only','p4_in_other_sections','explanation')
 } | ConvertTo-Json -Depth 10 -Compress
 
+function Get-AnalysisValue {
+    param([AllowNull()][object]$Object, [Parameter(Mandatory = $true)][string]$Property)
+    if ($null -eq $Object) { return $null }
+    $p = $Object.PSObject.Properties[$Property]
+    if ($null -eq $p) { return $null }
+    return $p.Value
+}
+
 function Invoke-Qualification {
     param([hashtable]$Profile)
     $payload = @{
@@ -73,7 +81,6 @@ function Invoke-Qualification {
             @{ role = 'system'; content = $systemPrompt },
             @{ role = 'user'; content = ('Prospect data:`n' + ($Profile | ConvertTo-Json -Depth 10)) }
         )
-        response_format = @{ type = 'json_schema'; json_schema = @{ name = 'prospect_qualification'; strict = $true; schema = ($schema | ConvertFrom-Json) } }
     }
     $body = $payload | ConvertTo-Json -Depth 20
     $uri = ($BaseUrl.TrimEnd('/') + '/chat/completions')
@@ -82,24 +89,66 @@ function Invoke-Qualification {
         try {
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -ContentType 'application/json' -Body $body
             $content = [string]$response.choices[0].message.content
-            if ($content) { return ($content | ConvertFrom-Json) }
+            if ($content) {
+                $parsed = $content | ConvertFrom-Json
+                # Luna may return detailed nested priority objects instead of the
+                # flat n8n-compatible schema. Flatten that response here.
+                if ([string]::IsNullOrWhiteSpace([string]$parsed.explanation)) {
+                    $parts = @()
+                    foreach ($name in @('priority_1_company_analysis','priority_2_current_position_analysis','priority_3_previous_position_and_background','priority_4_competitor_alternative_software','priority_5_moldex3d_false_positive_avoidance')) {
+                        $section = $parsed.PSObject.Properties[$name]
+                        if ($null -ne $section) {
+                            $value = $section.Value
+                            $flag = [string](Get-AnalysisValue $value 'true')
+                            $detail = [string](Get-AnalysisValue $value 'explanation')
+                            if ($detail) { $parts += ("$name = $flag. $detail") }
+                        }
+                    }
+                    foreach ($name in @('evidence_limitations','final_reasoning')) {
+                        $detail = [string](Get-AnalysisValue $parsed $name)
+                        if ($detail) { $parts += ("$name. $detail") }
+                    }
+                    if ($parts.Count -lt 5) { $parts = @($content) }
+                    if ($parts.Count -gt 0) { $parsed | Add-Member -Force -NotePropertyName explanation -NotePropertyValue ($parts -join "`n`n") | Out-Null }
+                }
+                if ($null -eq $parsed.priority_1_satisfied) { $parsed | Add-Member -Force -NotePropertyName priority_1_satisfied -NotePropertyValue ([bool](Get-AnalysisValue (Get-AnalysisValue $parsed 'priority_1_company_analysis') 'true')) | Out-Null }
+                if ($null -eq $parsed.priority_2_satisfied) { $parsed | Add-Member -Force -NotePropertyName priority_2_satisfied -NotePropertyValue ([bool](Get-AnalysisValue (Get-AnalysisValue $parsed 'priority_2_current_position_analysis') 'true')) | Out-Null }
+                if ($null -eq $parsed.priority_3_satisfied) { $parsed | Add-Member -Force -NotePropertyName priority_3_satisfied -NotePropertyValue ([bool](Get-AnalysisValue (Get-AnalysisValue $parsed 'priority_3_previous_position_and_background') 'true')) | Out-Null }
+                if ($null -eq $parsed.priority_4_satisfied) { $parsed | Add-Member -Force -NotePropertyName priority_4_satisfied -NotePropertyValue ([bool](Get-AnalysisValue (Get-AnalysisValue $parsed 'priority_4_competitor_alternative_software') 'true')) | Out-Null }
+                if ($null -eq $parsed.priority_5_satisfied) { $parsed | Add-Member -Force -NotePropertyName priority_5_satisfied -NotePropertyValue ([bool](Get-AnalysisValue (Get-AnalysisValue $parsed 'priority_5_moldex3d_false_positive_avoidance') 'true')) | Out-Null }
+                if ($null -eq $parsed.p4_in_skills_only) { $parsed | Add-Member -Force -NotePropertyName p4_in_skills_only -NotePropertyValue ([bool](Get-AnalysisValue (Get-AnalysisValue $parsed 'priority_4_competitor_alternative_software') 'p4_in_skills_only')) | Out-Null }
+                if ($null -eq $parsed.p4_in_other_sections) { $parsed | Add-Member -Force -NotePropertyName p4_in_other_sections -NotePropertyValue ([bool](Get-AnalysisValue (Get-AnalysisValue $parsed 'priority_4_competitor_alternative_software') 'p4_in_other_sections')) | Out-Null }
+                return $parsed
+            }
             throw 'The LiteLLM endpoint returned no message content.'
         } catch {
-            if ($attempt -eq $MaxRetries) { throw }
+            $detail = $_.Exception.Message
+            if ($_.Exception.Response) {
+                try {
+                    $reader = [System.IO.StreamReader]::new($_.Exception.Response.GetResponseStream())
+                    $detail = $reader.ReadToEnd()
+                    $reader.Dispose()
+                } catch { }
+            }
+            if ($attempt -eq $MaxRetries) { throw "LiteLLM request failed: $detail" }
             Start-Sleep -Seconds ([math]::Min(30, [math]::Pow(2, $attempt)))
         }
     }
 }
 
 $rows = @(Import-Csv -LiteralPath $InputPath)
-$targets = @($rows | Where-Object { $ReanalyzeAll -or [string]::IsNullOrWhiteSpace($_.AI_Judgement) })
+$targets = @($rows | Where-Object { $ReanalyzeAll -or [string]::IsNullOrWhiteSpace($_.AI_Judgement) -or $_.AI_Judgement -eq 'Error' })
 Write-Output "Profiles to analyze: $($targets.Count)"
 
 for ($i = 0; $i -lt $targets.Count; $i++) {
     $row = $targets[$i]
     $profile = [ordered]@{}
     foreach ($column in $row.PSObject.Properties.Name) {
-        if ($column -notin @('AI_Judgement','AI_Weighting','AI_Explanation','createdAt','updatedAt')) { $profile[$column] = [string]$row.$column }
+        if ($column -notin @('AI_Judgement','AI_Weighting','AI_Explanation','createdAt','updatedAt')) {
+            $value = [string]$row.$column
+            if ($column -match 'Tenure$') { $value = $value -replace [char]0x00B7, '-' }
+            $profile[$column] = $value
+        }
     }
     try {
         $result = Invoke-Qualification $profile
