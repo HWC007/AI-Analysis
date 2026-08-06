@@ -25,25 +25,64 @@ def token_value(explicit, path):
     return token
 
 
-def nested(obj, key): return obj.get(key) if isinstance(obj, dict) else None
-
-
 def normalize(result):
-    names = ["priority_1_company_analysis", "priority_2_current_position_analysis", "priority_3_previous_position_and_background", "priority_4_competitor_alternative_software", "priority_5_moldex3d_false_positive_avoidance"]
-    if not result.get("explanation"):
-        parts = []
-        for name in names:
-            section = result.get(name, {})
-            if section.get("explanation"): parts.append(f"{name}: {section.get('true')}. {section['explanation']}")
-        for name in ("evidence_limitations", "final_reasoning"):
-            if result.get(name): parts.append(f"{name}: {result[name]}")
-        result["explanation"] = "\n\n".join(parts) or json.dumps(result, ensure_ascii=False, indent=2)
-    mapping = [("priority_1_satisfied", names[0]), ("priority_2_satisfied", names[1]), ("priority_3_satisfied", names[2]), ("priority_4_satisfied", names[3]), ("priority_5_satisfied", names[4])]
-    for flat, nested_name in mapping:
-        if flat not in result: result[flat] = bool(nested(result.get(nested_name, {}), "true"))
-    p4 = result.get(names[3], {})
-    result.setdefault("p4_in_skills_only", bool(p4.get("p4_in_skills_only", False)))
-    result.setdefault("p4_in_other_sections", bool(p4.get("p4_in_other_sections", False)))
+    aliases = {
+        1: ["priority_1_company_analysis", "priority_1_company", "p1_company_analysis", "p1_company"],
+        2: ["priority_2_current_position_analysis", "priority_2_current_role", "p2_current_position_analysis", "p2_current_role"],
+        3: ["priority_3_previous_position_and_background", "priority_3_background", "p3_previous_position_and_background", "p3_background"],
+        4: ["priority_4_competitor_alternative_software", "priority_4_software", "p4_competitor_alternative_software", "p4_software"],
+        5: ["priority_5_moldex3d_false_positive_avoidance", "priority_5_moldex", "p5_moldex3d_false_positive_avoidance", "p5_moldex"],
+    }
+
+    def section(number):
+        for name in aliases[number]:
+            if isinstance(result.get(name), dict):
+                return result[name]
+        # Luna has used several casing/separator variants (for example
+        # P1_company_analysis). Accept any object whose key identifies P1-P5.
+        prefix = f"p{number}"
+        for name, data in result.items():
+            normalized = re.sub(r"[^a-z0-9]", "", str(name).lower())
+            if normalized.startswith(prefix) and isinstance(data, dict):
+                return data
+        return {}
+
+    def flag(value):
+        if isinstance(value, bool): return value
+        if isinstance(value, (int, float)): return value != 0
+        return str(value).strip().lower() in {"true", "yes", "y", "1", "match", "likely relevant", "relevant"}
+
+    def section_flag(data):
+        for key in ("satisfied", "qualified", "match", "result", "true"):
+            if key in data: return flag(data[key])
+        return False
+
+    labels = {
+        1: "Priority 1 — Company analysis",
+        2: "Priority 2 — Current position analysis",
+        3: "Priority 3 — Previous experience and background",
+        4: "Priority 4 — Competitor/alternative software",
+        5: "Priority 5 — Moldex3D/Moldex analysis",
+    }
+    sections = {n: section(n) for n in range(1, 6)}
+    for n in range(1, 6):
+        result[f"priority_{n}_satisfied"] = section_flag(sections[n])
+
+    p4 = sections[4]
+    result["p4_in_skills_only"] = flag(p4.get("p4_in_skills_only", False))
+    result["p4_in_other_sections"] = flag(p4.get("p4_in_other_sections", False))
+
+    paragraphs = []
+    for n in range(1, 6):
+        data = sections[n]
+        evidence = data.get("explanation") or data.get("evidence") or data.get("reasoning") or data.get("details") or "No explanation supplied."
+        paragraphs.append(f"{labels[n]}: {'True' if result[f'priority_{n}_satisfied'] else 'False'} — {evidence}")
+    if result.get("evidence_limitations"):
+        paragraphs.append(f"Evidence limitations: {result['evidence_limitations']}")
+    if result.get("final_reasoning") or result.get("overall_explanation"):
+        paragraphs.append(f"Overall assessment: {result.get('final_reasoning') or result.get('overall_explanation')}")
+    result["explanation"] = "\n\n".join(paragraphs)
+    result["judgement"] = "Yes" if any(result[f"priority_{n}_satisfied"] for n in (1, 2, 3, 5)) else "No"
     return result
 
 
