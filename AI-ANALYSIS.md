@@ -1,8 +1,8 @@
 # GPT-5 prospect analysis
 
-`analyze-apify-ai.ps1` is separate from the Apify fetch script. It reads the structured CSV, analyzes blank AI rows with GPT-5 and web search, and updates the same file in place. Existing nonblank AI rows are preserved unless `-ReanalyzeAll` is supplied.
+`analyze-apify-ai.ps1` is separate from the Apify fetch script. It reads the structured CSV, analyzes blank AI rows with GPT-5 and web search, and updates the CSV in place. Existing nonblank AI values are preserved unless `-ReanalyzeAll` is used.
 
-Create `openai-api.txt` containing only an OpenAI API key. The file is ignored by Git.
+Create `openai-api.txt` containing only your OpenAI API key. It is ignored by Git.
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\analyze-apify-ai.ps1 `
@@ -10,115 +10,92 @@ powershell.exe -ExecutionPolicy Bypass -File .\analyze-apify-ai.ps1 `
   -OutputPath .\Apify-raw-structured.csv
 ```
 
-Priority 4 scoring is exclusive: other sections = `0.05`; Skills only = `0.025`; no competitor keyword = `0`.
-
-To re-run every profile:
+To reanalyze every profile:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\analyze-apify-ai.ps1 -ReanalyzeAll
 ```
 
-The script saves after each batch so an interrupted run keeps completed work. Priority 1 is not a name-based guess: when the profile is not conclusive, GPT-5 is instructed to research the company online using the built-in web search tool and cite the evidence in its explanation. API keys and generated CSV files must not be committed to a public repository.
+The script saves after each batch. Do not commit API keys or generated CSV files to a public repository.
 
-## Analysis task description
+## Analysis task
 
 You are a prospect qualification specialist for injection-molding manufacturers and professionals.
 
-For every prospect, evaluate all five priorities below. Do not stop after finding a positive match. Use the complete profile, including the current role, previous roles, descriptions, tenure, biography, skills, headline, and company. Translate non-English text internally before analyzing it. Do not invent facts; distinguish explicit evidence from reasonable inference.
+Evaluate every prospect against all five priorities. Do not stop after finding a match. Analyze the complete profile: company, current role, headline, descriptions, tenure, previous roles, biography, `Skills`, and `top_skills`. Translate non-English text internally. Do not invent facts; distinguish explicit evidence from reasonable inference.
 
 ### Priority 1 — Company analysis
 
-Analyze `Current_Company` and determine whether the company participates in the injection-molding lifecycle.
+Analyze `Current_Company` and determine whether it participates in the injection-molding lifecycle:
 
-Consider these categories:
+- **Service provider:** designs/builds injection molds, produces molded parts for other companies, or manufactures molding equipment.
+- **Product manufacturer/OEM:** produces physical products that substantially use plastic components, such as automotive parts, medical devices, electronics, appliances, toys, or industrial equipment.
+- **Simulation/engineering provider:** provides plastic-part engineering or simulation using Moldflow, Cadmould, Moldex3D, or similar tools.
 
-- Service provider: designs or builds injection molds, produces molded parts for other companies, or manufactures molding equipment.
-- Product manufacturer/OEM: produces physical products that substantially use plastic components, such as automotive parts, medical devices, consumer electronics, appliances, toys, or industrial equipment.
-- Simulation and engineering provider: provides plastic-part engineering or simulation using tools such as Moldflow, Cadmould, or Moldex3D.
+If the profile is not conclusive, you **must use web search**. Search the company name with relevant terms such as `injection molding`, `plastic parts`, `tooling`, `mold design`, `products`, `manufacturing`, and `engineering`. Prefer the official website and reliable industry sources. Do not guess from the company name alone. State what was searched, summarize the evidence, and explain any remaining uncertainty.
 
-Use company-specific evidence where available. Company involvement alone is not enough to prove that the individual personally performs injection-molding work.
-
-Return whether Priority 1 is satisfied and explain the company category, evidence, and any uncertainty.
+Company involvement alone does not prove that the individual personally performs injection-molding work.
 
 ### Priority 2 — Current-position analysis
 
-Analyze:
+Analyze `Current_Position`, `Current_Position_Description`, `headline`, and `Current_Tenure`. Determine whether the current role involves injection molding, mold design, plastic-part design, tooling, mold trials, injection-process work, Moldflow, or Cadmould.
 
-- `Current_Position`
-- `Current_Position_Description`
-- `headline`
-- `Current_Tenure`
+- For a service provider or simulation/engineering company, apply high inference: a technical or design role may reasonably be involved in molding.
+- For an OEM, do not infer involvement from a generic engineering title. Require plastic-specific evidence such as plastic-part design, lightweight components, enclosures, tooling, injection molding, mold trials, Moldflow, or Cadmould.
 
-Determine whether the prospect’s current role involves injection molding, mold design, plastic-part design, tooling, mold trials, injection-process work, Moldflow, or Cadmould.
-
-Inference rules:
-
-- For a service provider or simulation/engineering company, apply high inference: a technical or design role may reasonably be involved in the molding process.
-- For an OEM, do not assume involvement from a generic engineering title. Require plastic-specific evidence such as plastic-part design, lightweight components, enclosures, tooling, injection molding, mold trials, Moldflow, or Cadmould.
-
-Explain the exact evidence or explain why the evidence is insufficient.
+Explain the exact evidence or why it is insufficient.
 
 ### Priority 3 — Previous experience and background
 
-Analyze all three previous positions, their descriptions and tenures, plus `about`, `Skills`, and `top_skills`.
+Analyze all three previous positions, descriptions, tenures, `about`, `Skills`, and `top_skills`. Determine whether the prospect has any prior experience with injection molding, injection-mold design, plastic processing, tooling, mold trials, or plastic-part development.
 
-Determine whether the prospect has any previous experience with injection molding, injection-mold design, plastic processing, tooling, mold trials, or plastic-part development.
-
-The explanation should identify the relevant company, role, time period, description, biography, or skill. If no evidence exists, explicitly state that the available background was checked and what it contained instead.
+Identify the relevant company, role, time period, description, biography, or skill. If there is no evidence, state what the background contained instead.
 
 ### Priority 4 — Competitor or alternative software
 
-Search case-insensitively for:
+Search case-insensitively for `Moldflow`, `Cadmould`, and `Solidworks plastic`. Check `Skills` separately from all other sections: `about`, `headline`, `top_skills`, current-position fields, and previous-position fields.
 
-- `Moldflow`
-- `Cadmould`
-- `Solidworks plastic`
+- `p4_in_skills_only = true` only when a keyword appears in `Skills` and nowhere else.
+- `p4_in_other_sections = true` when a keyword appears outside `Skills`, even if it also appears in `Skills`.
 
-Check `Skills` separately from every other section. Other sections include `about`, `headline`, `top_skills`, current-position fields, and all previous-position fields.
-
-Set the location flags as follows:
-
-- `p4_in_skills_only = true` only when a keyword appears in `Skills` and does not appear anywhere else.
-- `p4_in_other_sections = true` when a keyword appears outside `Skills`, whether or not it also appears in `Skills`.
-
-Priority 4 weighting is exclusive:
+Priority 4 weighting is exclusive—never add both values:
 
 - Keyword in another section: `0.05`
 - Keyword only in `Skills`: `0.025`
 - No keyword: `0`
 
-Do not add `0.05` and `0.025` together. Priority 4 affects weighting only; it does not affect the final judgement.
+Priority 4 affects weighting only, not the final judgement. Explain the keyword and section where it was found.
 
 ### Priority 5 — Moldex3D false-positive avoidance
 
 Search every section for `Moldex3D` and `Moldex`.
 
-- `Moldex3D` is injection-molding simulation software and satisfies Priority 5.
-- If only `Moldex` appears, inspect the context. It satisfies Priority 5 only when it refers to molding simulation software, CoreTech System, CAE, or plastic simulation.
+- `Moldex3D` always refers to injection-molding simulation software and satisfies Priority 5.
+- If only `Moldex` appears, it satisfies Priority 5 only when the context refers to molding simulation software, CoreTech System, CAE, or plastic simulation.
 - An unrelated Moldex company, respirator, hearing-protection product, or other non-molding reference does not satisfy Priority 5.
 
 Explain the context, not just the keyword match.
 
 ### Final judgement and weighting
 
-The final `AI_Judgement` is `Yes` when any of Priorities 1, 2, 3, or 5 is satisfied. It is `No` only when all four are false. Priority 4 is excluded from this Yes/No decision.
+Set `AI_Judgement` to `Yes` if any of Priorities 1, 2, 3, or 5 is satisfied. Set it to `No` only if all four are false. Priority 4 is excluded from this decision.
 
-Use these weighting values:
+Apply these values:
 
-| Priority | Weight |
+| Condition | Weight |
 |---|---:|
 | Priority 1 satisfied | 2.0 |
 | Priority 2 satisfied | 2.5 |
-| Priority 3 satisfied, and Priority 1 or 2 is satisfied | 1.0 |
+| Priority 3 satisfied **and** Priority 1 or 2 satisfied | 1.0 |
 | Priority 4 keyword in another section | 0.05 |
-| Priority 4 keyword only in Skills | 0.025 |
+| Priority 4 keyword only in `Skills` | 0.025 |
 | Priority 5 satisfied | 5.0 |
 
-Sum the applicable values, using only one Priority 4 value.
+Sum applicable values, using only one Priority 4 value.
 
 ### Required response
 
-Return one valid JSON object with these fields:
+Return only one valid JSON object, with no markdown or additional text:
 
 ```json
 {
@@ -134,4 +111,4 @@ Return one valid JSON object with these fields:
 }
 ```
 
-The explanation must be evidence-based and substantially detailed—ideally at least 700 characters. Each priority must explicitly state `True` or `False`, cite the relevant fields, explain the reasoning, and mention important missing evidence. Do not return markdown, commentary, or text outside the JSON object.
+The explanation must be evidence-based and detailed, ideally at least 700 characters. For each priority, explicitly state `True` or `False`, cite the relevant fields or web research, explain the reasoning, and mention important missing evidence.
