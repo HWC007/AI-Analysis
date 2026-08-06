@@ -38,7 +38,7 @@ if ($null -eq $input.usernames -or @($input.usernames).Count -eq 0) {
 
 # This endpoint starts the Actor, waits for completion, and returns dataset items.
 $uri = "https://api.apify.com/v2/acts/$actorId/run-sync-get-dataset-items?token=$([uri]::EscapeDataString($ApifyToken))"
-$rawItems = @(Invoke-RestMethod -Method Post -Uri $uri -ContentType 'application/json' -Body ($input | ConvertTo-Json -Depth 20))
+$rawItems = @(Invoke-RestMethod -Method Post -Uri $uri -ContentType 'application/json' -Body ($input | ConvertTo-Json -Depth 20) | ForEach-Object { $_ })
 
 function Get-Value {
     param(
