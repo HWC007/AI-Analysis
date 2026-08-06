@@ -45,7 +45,7 @@ FINAL JUDGEMENT
 Judgement is Yes if ANY of Priority 1, 2, 3, or 5 is true. Judgement is No only if all four are false. Priority 4 never changes judgement.
 
 EXPLANATION QUALITY
-Write a detailed, evidence-based explanation of at least 700 characters. Include a separate labeled paragraph for each Priority 1 through Priority 5. Each paragraph must state True/False, cite the relevant fields, explain the reasoning, and mention important missing evidence where applicable. Do not merely repeat the input. Return only valid JSON, with no markdown fences or extra text.
+Write a concise but evidence-based explanation for every priority, with separate labeled paragraphs. Target approximately 1,000–1,800 characters and do not exceed 2,500 characters. Include the strongest evidence and important missing evidence; do not repeat the entire profile. Return only valid JSON, with no markdown fences or extra text.
 '@
 
 $schema = @{

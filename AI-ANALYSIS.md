@@ -121,4 +121,4 @@ Return only one valid JSON object, with no markdown or additional text:
 }
 ```
 
-The explanation must be evidence-based and detailed, ideally at least 700 characters. For each priority, explicitly state `True` or `False`, cite the relevant fields or web research, explain the reasoning, and mention important missing evidence.
+The explanation must be concise but evidence-based, targeting approximately 1,000–1,800 characters and never exceeding 2,500 characters. For each priority, explicitly state `True` or `False`, cite the strongest relevant fields or web research, explain the reasoning, and mention important missing evidence without repeating the entire profile.

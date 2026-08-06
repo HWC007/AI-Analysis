@@ -15,7 +15,7 @@ PRIORITY 4 — SOFTWARE: Search case-insensitively for Moldflow, Cadmould, and S
 PRIORITY 5 — MOLDEX: Moldex3D always satisfies Priority 5. If only Moldex appears, satisfy it only for molding simulation/CoreTech/CAE/plastic simulation, not unrelated Moldex products or companies.
 
 JUDGEMENT: Yes if any of P1, P2, P3, or P5 is true; No only if all four are false. Priority 4 never affects judgement.
-Return only valid JSON. Provide detailed evidence for every priority, with separate labeled sections, and ideally at least 700 characters.''' 
+Return only valid JSON. Provide concise but evidence-based explanations for every priority, with separate labeled sections. Target approximately 1,000–1,800 characters and do not exceed 2,500 characters. Include the strongest evidence and important missing evidence; do not repeat the entire profile.''' 
 
 
 def token_value(explicit, path):
