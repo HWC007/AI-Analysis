@@ -31,3 +31,13 @@ To intentionally replace the output with only the current scrape, add `-Replace`
 The script uses Apify's synchronous dataset endpoint, so it waits for the Actor to finish. It safely handles profiles with fewer than four experience entries and writes empty values where fields are absent.
 
 Do not commit an Apify token or raw personal data to a public repository. The token previously visible in the n8n export should be revoked and replaced.
+
+## Python alternative
+
+The equivalent Python fetcher is [fetch-apify-linkedin.py](fetch-apify-linkedin.py):
+
+```powershell
+python .\fetch-apify-linkedin.py `
+  --input .\apify-input.json `
+  --output .\Apify-raw-structured.csv
+```

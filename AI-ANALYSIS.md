@@ -18,6 +18,14 @@ powershell.exe -ExecutionPolicy Bypass -File .\analyze-apify-ai.ps1 -ReanalyzeAl
 
 The script saves after each batch. Do not commit API keys or generated CSV files to a public repository.
 
+Python equivalent:
+
+```powershell
+python .\analyze-apify-ai.py `
+  --input .\Apify-raw-structured.csv `
+  --output .\Apify-raw-structured.csv
+```
+
 The default endpoint is `http://ai.moldex3d.com:4000/v1` and the default model is `luna`. Override them with `-BaseUrl` and `-Model` when needed. The endpoint must expose an OpenAI-compatible `/chat/completions` route.
 
 ## Analysis task
