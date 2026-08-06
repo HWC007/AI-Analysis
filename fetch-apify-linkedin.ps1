@@ -9,7 +9,9 @@ param(
 
     [string]$TokenPath = '.\apify-api.txt',
 
-    [int]$StartingId = 1
+    [int]$StartingId = 1,
+
+    [switch]$Replace
 )
 
 $ErrorActionPreference = 'Stop'
@@ -67,7 +69,7 @@ function Join-Names {
     return (@($Items) | ForEach-Object { [string](Get-Value $_ 'name') } | Where-Object { $_ }) -join ', '
 }
 
-$structured = for ($i = 0; $i -lt $rawItems.Count; $i++) {
+$newProfiles = for ($i = 0; $i -lt $rawItems.Count; $i++) {
     $item = $rawItems[$i]
     $basic = Get-Value $item 'basic_info'
     $location = Get-Value $basic 'location'
@@ -113,5 +115,33 @@ $structured = for ($i = 0; $i -lt $rawItems.Count; $i++) {
     }
 }
 
+$existing = @()
+if ((-not $Replace) -and (Test-Path -LiteralPath $OutputPath -PathType Leaf)) {
+    $existing = @(Import-Csv -LiteralPath $OutputPath)
+}
+
+$nextId = $StartingId
+if ($existing.Count -gt 0) {
+    $numericIds = @($existing | ForEach-Object { $parsed = 0; if ([int]::TryParse([string]$_.id, [ref]$parsed)) { $parsed } })
+    if ($numericIds.Count -gt 0) { $nextId = ([int](($numericIds | Measure-Object -Maximum).Maximum)) + 1 }
+}
+
+$existingUrls = @{}
+foreach ($old in $existing) {
+    $url = ([string]$old.LinkedIn_URL).Trim().TrimEnd('/')
+    if ($url) { $existingUrls[$url.ToLowerInvariant()] = $true }
+}
+
+$toAdd = @()
+foreach ($profile in $newProfiles) {
+    $url = ([string]$profile.LinkedIn_URL).Trim().TrimEnd('/')
+    if ($url -and $existingUrls.ContainsKey($url.ToLowerInvariant())) { continue }
+    $profile.id = $nextId
+    $nextId++
+    $toAdd += $profile
+    if ($url) { $existingUrls[$url.ToLowerInvariant()] = $true }
+}
+
+$structured = @($existing + $toAdd)
 $structured | Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding UTF8
-Write-Output "Saved $($structured.Count) structured profiles to $OutputPath"
+Write-Output "Saved $($structured.Count) total profiles to $OutputPath; added $($toAdd.Count); skipped $($newProfiles.Count - $toAdd.Count) duplicates."

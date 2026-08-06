@@ -18,13 +18,15 @@ $env:APIFY_TOKEN = 'paste-a-new-apify-token-here'
 
 Prepare an input file based on [apify-input.example.json](apify-input.example.json), replacing the example URL with the LinkedIn URLs to scrape.
 
-Run the export:
+Run the export. Existing output is preserved by default; new profiles are appended and duplicate LinkedIn URLs are skipped:
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\fetch-apify-linkedin.ps1 `
   -InputPath .\apify-input.json `
   -OutputPath .\Apify-raw-structured.csv
 ```
+
+To intentionally replace the output with only the current scrape, add `-Replace`.
 
 The script uses Apify's synchronous dataset endpoint, so it waits for the Actor to finish. It safely handles profiles with fewer than four experience entries and writes empty values where fields are absent.
 
