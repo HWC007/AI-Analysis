@@ -1,0 +1,107 @@
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$InputPath,
+
+    [string]$OutputPath = '.\Apify-raw-structured.csv',
+
+    [string]$ApifyToken = $env:APIFY_TOKEN,
+
+    [int]$StartingId = 1
+)
+
+$ErrorActionPreference = 'Stop'
+$actorId = 'apimaestro~linkedin-profile-full-sections-scraper'
+
+if ([string]::IsNullOrWhiteSpace($ApifyToken)) {
+    throw 'No Apify token supplied. Set $env:APIFY_TOKEN or pass -ApifyToken.'
+}
+
+if (-not (Test-Path -LiteralPath $InputPath -PathType Leaf)) {
+    throw "Input file not found: $InputPath"
+}
+
+$input = Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json
+if ($null -eq $input.usernames -or @($input.usernames).Count -eq 0) {
+    throw 'The input JSON must contain a non-empty usernames array.'
+}
+
+# This endpoint starts the Actor, waits for completion, and returns dataset items.
+$uri = "https://api.apify.com/v2/acts/$actorId/run-sync-get-dataset-items?token=$([uri]::EscapeDataString($ApifyToken))"
+$rawItems = @(Invoke-RestMethod -Method Post -Uri $uri -ContentType 'application/json' -Body ($input | ConvertTo-Json -Depth 20))
+
+function Get-Value {
+    param(
+        [AllowNull()][object]$Object,
+        [Parameter(Mandatory = $true)][string]$Property,
+        [AllowNull()][object]$Default = ''
+    )
+    if ($null -eq $Object) { return $Default }
+    $propertyInfo = $Object.PSObject.Properties[$Property]
+    if ($null -eq $propertyInfo -or $null -eq $propertyInfo.Value) { return $Default }
+    return $propertyInfo.Value
+}
+
+function Get-ArrayItem {
+    param(
+        [AllowNull()][object]$Array,
+        [int]$Index
+    )
+    $items = @($Array)
+    if ($Index -lt 0 -or $Index -ge $items.Count) { return $null }
+    return $items[$Index]
+}
+
+function Join-Names {
+    param([AllowNull()][object]$Items)
+    return (@($Items) | ForEach-Object { [string](Get-Value $_ 'name') } | Where-Object { $_ }) -join ', '
+}
+
+$structured = for ($i = 0; $i -lt $rawItems.Count; $i++) {
+    $item = $rawItems[$i]
+    $basic = Get-Value $item 'basic_info'
+    $location = Get-Value $basic 'location'
+    $experience = @(Get-Value $item 'experience' @())
+    $current = Get-ArrayItem $experience 0
+    $past1 = Get-ArrayItem $experience 1
+    $past2 = Get-ArrayItem $experience 2
+    $past3 = Get-ArrayItem $experience 3
+
+    [pscustomobject][ordered]@{
+        id                              = $StartingId + $i
+        fullname                        = Get-Value $basic 'fullname'
+        first_name                      = Get-Value $basic 'first_name'
+        last_name                       = Get-Value $basic 'last_name'
+        headline                        = Get-Value $basic 'headline'
+        LinkedIn_URL                    = Get-Value $basic 'profile_url'
+        location                        = Get-Value $location 'full'
+        country                         = Get-Value $location 'country'
+        city                            = Get-Value $location 'city'
+        follower_count                  = Get-Value $basic 'follower_count'
+        connection_count                = Get-Value $basic 'connection_count'
+        about                           = Get-Value $basic 'about'
+        Skills                          = Join-Names (Get-Value $item 'skills' @())
+        top_skills                      = (@(Get-Value $basic 'top_skills' @()) -join ', ')
+        Current_Company                 = Get-Value $current 'company'
+        Current_Position                = Get-Value $current 'title'
+        Current_Position_Description    = Get-Value $current 'description'
+        Current_Tenure                  = Get-Value $current 'duration'
+        Past_Company_1                  = Get-Value $past1 'company'
+        Past_Position_1                 = Get-Value $past1 'title'
+        Past_Position_1_Description     = Get-Value $past1 'description'
+        Past_Position_1_Tenure           = Get-Value $past1 'duration'
+        Past_Company_2                  = Get-Value $past2 'company'
+        Past_Position_2                 = Get-Value $past2 'title'
+        Past_Position_2_Description     = Get-Value $past2 'description'
+        Past_Position_2_Tenure           = Get-Value $past2 'duration'
+        Past_Company_3                  = Get-Value $past3 'company'
+        Past_Position_3                 = Get-Value $past3 'title'
+        Past_Position_3_Description     = Get-Value $past3 'description'
+        Past_Position_3_Tenure           = Get-Value $past3 'duration'
+        createdAt                       = (Get-Date).ToUniversalTime().ToString('o')
+        updatedAt                       = (Get-Date).ToUniversalTime().ToString('o')
+    }
+}
+
+$structured | Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding UTF8
+Write-Output "Saved $($structured.Count) structured profiles to $OutputPath"
