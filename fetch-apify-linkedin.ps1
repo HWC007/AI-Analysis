@@ -5,7 +5,9 @@ param(
 
     [string]$OutputPath = '.\Apify-raw-structured.csv',
 
-    [string]$ApifyToken = $env:APIFY_TOKEN,
+    [string]$ApifyToken = '',
+
+    [string]$TokenPath = '.\apify-api.txt',
 
     [int]$StartingId = 1
 )
@@ -14,7 +16,15 @@ $ErrorActionPreference = 'Stop'
 $actorId = 'apimaestro~linkedin-profile-full-sections-scraper'
 
 if ([string]::IsNullOrWhiteSpace($ApifyToken)) {
-    throw 'No Apify token supplied. Set $env:APIFY_TOKEN or pass -ApifyToken.'
+    $ApifyToken = $env:APIFY_TOKEN
+}
+
+if ([string]::IsNullOrWhiteSpace($ApifyToken) -and (Test-Path -LiteralPath $TokenPath -PathType Leaf)) {
+    $ApifyToken = (Get-Content -LiteralPath $TokenPath -Raw).Trim()
+}
+
+if ([string]::IsNullOrWhiteSpace($ApifyToken)) {
+    throw "No Apify token supplied. Set `$env:APIFY_TOKEN, pass -ApifyToken, or create $TokenPath containing only the token."
 }
 
 if (-not (Test-Path -LiteralPath $InputPath -PathType Leaf)) {

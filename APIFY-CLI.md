@@ -4,7 +4,13 @@ This reproduces the n8n mapping from the LinkedIn scraper into the same 32-colum
 
 ## Run on Windows
 
-Set the token for the current PowerShell session:
+You can store the token in a local `apify-api.txt` file containing only the token. The file is ignored by Git:
+
+```text
+apify_api_your_token_here
+```
+
+Alternatively, set the token for the current PowerShell session:
 
 ```powershell
 $env:APIFY_TOKEN = 'paste-a-new-apify-token-here'
