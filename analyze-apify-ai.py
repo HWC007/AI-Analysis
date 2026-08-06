@@ -2,8 +2,13 @@
 """Analyze structured profiles through an OpenAI-compatible LiteLLM endpoint."""
 
 import argparse, csv, json, os, re, sys, time, urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 SYSTEM_PROMPT = r'''You are a prospect qualification specialist for injection molding manufacturers and professionals.
 Evaluate EVERY prospect against ALL FIVE priorities. Do not stop after finding a match. Translate non-English text internally. Use all supplied tenure fields. Do not invent facts.
@@ -116,6 +121,18 @@ def call(base_url, model, key, profile, research, retries):
             time.sleep(min(30, 2 ** (attempt + 1)))
 
 
+def analyze_one(row, base_url, model, key, research, retries):
+    profile = {k: (re.sub("\\u00b7", "-", str(v)) if k.endswith("Tenure") else str(v)) for k, v in row.items() if k not in {"AI_Judgement", "AI_Weighting", "AI_Explanation", "createdAt", "updatedAt"}}
+    result = call(base_url, model, key, profile, research, retries)
+    p1, p2, p3, p4, p5 = (bool(result.get(k)) for k in ["priority_1_satisfied", "priority_2_satisfied", "priority_3_satisfied", "priority_4_satisfied", "priority_5_satisfied"])
+    p4_score = 0.05 if result.get("p4_in_other_sections") else 0.025 if result.get("p4_in_skills_only") else 0
+    return {
+        "AI_Judgement": "Yes" if p1 or p2 or p3 or p5 else "No",
+        "AI_Weighting": round((2 if p1 else 0) + (2.5 if p2 else 0) + (1 if p3 and (p1 or p2) else 0) + p4_score + (5 if p5 else 0), 3),
+        "AI_Explanation": result.get("explanation", ""),
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default=".\\Apify-raw-structured.csv"); parser.add_argument("--output", default=".\\Apify-raw-structured.csv")
@@ -123,40 +140,45 @@ def main():
     parser.add_argument("--base-url", default="http://ai.moldex3d.com:4000/v1"); parser.add_argument("--model", default="gpt-5.6-luna")
     parser.add_argument("--research-model", default="gpt-4o", help="Model used with /responses and web_search_preview")
     parser.add_argument("--no-web-search", action="store_true")
+    parser.add_argument("--workers", type=int, default=4, help="Concurrent web research/analysis workers")
     parser.add_argument("--batch-size", type=int, default=10); parser.add_argument("--max-retries", type=int, default=3); parser.add_argument("--reanalyze-all", action="store_true")
     args = parser.parse_args()
     with open(args.input, newline="", encoding="utf-8-sig") as f: rows = list(csv.DictReader(f))
     targets = [r for r in rows if args.reanalyze_all or not r.get("AI_Judgement", "").strip() or r.get("AI_Judgement") == "Error"]
     key = token_value(args.api_key, args.api_key_file); print(f"Profiles to analyze: {len(targets)}")
     research_cache = {}
-    for index, row in enumerate(targets, 1):
-        profile = {k: (re.sub("\\u00b7", "-", str(v)) if k.endswith("Tenure") else str(v)) for k, v in row.items() if k not in {"AI_Judgement", "AI_Weighting", "AI_Explanation", "createdAt", "updatedAt"}}
-        try:
-            company = str(row.get("Current_Company", "")).strip()
-            company_key = company.casefold()
-            if args.no_web_search:
-                research = "Web search disabled by command-line option."
-            elif company_key in research_cache:
-                research = research_cache[company_key]
-            else:
-                try:
-                    research = search_company(args.base_url, args.research_model, key, company, args.max_retries)
-                except Exception as search_error:
-                    research = f"Web research failed: {search_error}"
-                research_cache[company_key] = research
-                print(f"Company research cached: {company}")
-            result = call(args.base_url, args.model, key, profile, research, args.max_retries)
-            p1, p2, p3, p4, p5 = (bool(result.get(k)) for k in ["priority_1_satisfied", "priority_2_satisfied", "priority_3_satisfied", "priority_4_satisfied", "priority_5_satisfied"])
-            p4_score = 0.05 if result.get("p4_in_other_sections") else 0.025 if result.get("p4_in_skills_only") else 0
-            row["AI_Judgement"] = "Yes" if p1 or p2 or p3 or p5 else "No"
-            row["AI_Weighting"] = round((2 if p1 else 0) + (2.5 if p2 else 0) + (1 if p3 and (p1 or p2) else 0) + p4_score + (5 if p5 else 0), 3)
-            row["AI_Explanation"] = result.get("explanation", "")
-            row["updatedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        except Exception as exc:
-            row["AI_Judgement"], row["AI_Weighting"], row["AI_Explanation"] = "Error", 0, str(exc)
-        if index % args.batch_size == 0 or index == len(targets):
-            with open(args.output, "w", newline="", encoding="utf-8-sig") as f: csv.DictWriter(f, fieldnames=rows[0].keys()).writeheader(); csv.DictWriter(f, fieldnames=rows[0].keys()).writerows(rows)
-            print(f"Processed {index} / {len(targets)}")
+    companies = {str(row.get("Current_Company", "")).strip().casefold(): str(row.get("Current_Company", "")).strip() for row in targets if str(row.get("Current_Company", "")).strip()}
+    if args.no_web_search:
+        research_cache = {key_name: "Web search disabled by command-line option." for key_name in companies}
+    else:
+        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+            futures = {pool.submit(search_company, args.base_url, args.research_model, key, company, args.max_retries): key_name for key_name, company in companies.items()}
+            for future in as_completed(futures):
+                key_name = futures[future]
+                try: research_cache[key_name] = future.result()
+                except Exception as exc: research_cache[key_name] = f"Web research failed: {exc}"
+                print(f"Company research cached: {companies[key_name]}")
+
+    def process(index, row):
+        company_key = str(row.get("Current_Company", "")).strip().casefold()
+        return index, analyze_one(row, args.base_url, args.model, key, research_cache.get(company_key, "No company research available."), args.max_retries)
+
+    completed = 0
+    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+        futures = {pool.submit(process, index, row): index for index, row in enumerate(targets)}
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                _, result = future.result()
+                targets[index].update(result)
+                targets[index]["updatedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            except Exception as exc:
+                targets[index]["AI_Judgement"], targets[index]["AI_Weighting"], targets[index]["AI_Explanation"] = "Error", 0, str(exc)
+            completed += 1
+            if completed % args.batch_size == 0 or completed == len(targets):
+                with open(args.output, "w", newline="", encoding="utf-8-sig") as f:
+                    writer = csv.DictWriter(f, fieldnames=rows[0].keys()); writer.writeheader(); writer.writerows(rows)
+                print(f"Processed {completed} / {len(targets)}")
     print(f"Saved analysis to {args.output}")
 
 

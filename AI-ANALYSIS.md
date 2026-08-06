@@ -30,6 +30,14 @@ The default endpoint is `http://ai.moldex3d.com:4000/v1` and the default model i
 
 The Python analyzer uses two stages: `gpt-4o` calls `/responses` with `web_search_preview` to research each unique company, then `gpt-5.6-luna` analyzes the profile using that cached research. Use `--research-model` to change the research model or `--no-web-search` to disable it intentionally.
 
+Research and profile analysis run concurrently. The default is 4 workers; lower it if the gateway rate-limits requests, or increase it cautiously:
+
+```powershell
+python .\analyze-apify-ai.py --workers 4
+```
+
+Company research is performed once per normalized company name, so multiple profiles at the same company reuse the same research. Console output is forced to UTF-8 for European names and accents.
+
 ## Analysis task
 
 You are a prospect qualification specialist for injection-molding manufacturers and professionals.
