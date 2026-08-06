@@ -4,7 +4,8 @@ param(
     [string]$OutputPath = '.\Apify-raw-structured.csv',
     [string]$ApiKeyPath = '.\openai-api.txt',
     [string]$OpenAIKey = $env:OPENAI_API_KEY,
-    [string]$Model = 'gpt-5',
+    [string]$BaseUrl = 'http://ai.moldex3d.com:4000/v1',
+    [string]$Model = 'luna',
     [int]$BatchSize = 10,
     [int]$MaxRetries = 3,
     [switch]$ReanalyzeAll
@@ -68,23 +69,21 @@ function Invoke-Qualification {
     param([hashtable]$Profile)
     $payload = @{
         model = $Model
-        tools = @(@{ type = 'web_search_preview' })
-        input = @(
-            @{ role = 'system'; content = @(@{ type = 'input_text'; text = $systemPrompt }) },
-            @{ role = 'user'; content = @(@{ type = 'input_text'; text = ('Prospect data:`n' + ($Profile | ConvertTo-Json -Depth 10)) }) }
+        messages = @(
+            @{ role = 'system'; content = $systemPrompt },
+            @{ role = 'user'; content = ('Prospect data:`n' + ($Profile | ConvertTo-Json -Depth 10)) }
         )
-        text = @{ format = @{ type = 'json_schema'; name = 'prospect_qualification'; strict = $true; schema = ($schema | ConvertFrom-Json) } }
+        response_format = @{ type = 'json_schema'; json_schema = @{ name = 'prospect_qualification'; strict = $true; schema = ($schema | ConvertFrom-Json) } }
     }
     $body = $payload | ConvertTo-Json -Depth 20
-    $uri = 'https://api.openai.com/v1/responses'
+    $uri = ($BaseUrl.TrimEnd('/') + '/chat/completions')
     $headers = @{ Authorization = "Bearer $OpenAIKey" }
     for ($attempt = 1; $attempt -le $MaxRetries; $attempt++) {
         try {
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -ContentType 'application/json' -Body $body
-            if ($response.output_text) { return ($response.output_text | ConvertFrom-Json) }
-            $jsonText = @($response.output | ForEach-Object { @($_.content) } | Where-Object { $_.type -eq 'output_text' } | Select-Object -ExpandProperty text) -join ''
-            if ($jsonText) { return ($jsonText | ConvertFrom-Json) }
-            throw 'The Responses API returned no structured output.'
+            $content = [string]$response.choices[0].message.content
+            if ($content) { return ($content | ConvertFrom-Json) }
+            throw 'The LiteLLM endpoint returned no message content.'
         } catch {
             if ($attempt -eq $MaxRetries) { throw }
             Start-Sleep -Seconds ([math]::Min(30, [math]::Pow(2, $attempt)))

@@ -1,8 +1,8 @@
 # GPT-5 prospect analysis
 
-`analyze-apify-ai.ps1` is separate from the Apify fetch script. It reads the structured CSV, analyzes blank AI rows with GPT-5 and web search, and updates the CSV in place. Existing nonblank AI values are preserved unless `-ReanalyzeAll` is used.
+`analyze-apify-ai.ps1` is separate from the Apify fetch script. It reads the structured CSV, analyzes blank AI rows through the configured OpenAI-compatible LiteLLM endpoint, and updates the CSV in place. Existing nonblank AI values are preserved unless `-ReanalyzeAll` is used.
 
-Create `openai-api.txt` containing only your OpenAI API key. It is ignored by Git.
+Create `openai-api.txt` containing only your LiteLLM virtual key. It is ignored by Git.
 
 ```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\analyze-apify-ai.ps1 `
@@ -18,6 +18,8 @@ powershell.exe -ExecutionPolicy Bypass -File .\analyze-apify-ai.ps1 -ReanalyzeAl
 
 The script saves after each batch. Do not commit API keys or generated CSV files to a public repository.
 
+The default endpoint is `http://ai.moldex3d.com:4000/v1` and the default model is `luna`. Override them with `-BaseUrl` and `-Model` when needed. The endpoint must expose an OpenAI-compatible `/chat/completions` route.
+
 ## Analysis task
 
 You are a prospect qualification specialist for injection-molding manufacturers and professionals.
@@ -32,7 +34,7 @@ Analyze `Current_Company` and determine whether it participates in the injection
 - **Product manufacturer/OEM:** produces physical products that substantially use plastic components, such as automotive parts, medical devices, electronics, appliances, toys, or industrial equipment.
 - **Simulation/engineering provider:** provides plastic-part engineering or simulation using Moldflow, Cadmould, Moldex3D, or similar tools.
 
-If the profile is not conclusive, you **must use web search**. Search the company name with relevant terms such as `injection molding`, `plastic parts`, `tooling`, `mold design`, `products`, `manufacturing`, and `engineering`. Prefer the official website and reliable industry sources. Do not guess from the company name alone. State what was searched, summarize the evidence, and explain any remaining uncertainty.
+If the profile is not conclusive, web research is required when the configured model or gateway provides web-search capability. Search the company name with relevant terms such as `injection molding`, `plastic parts`, `tooling`, `mold design`, `products`, `manufacturing`, and `engineering`. Prefer the official website and reliable industry sources. Do not guess from the company name alone. State what was searched, summarize the evidence, and explain any remaining uncertainty.
 
 Company involvement alone does not prove that the individual personally performs injection-molding work.
 
