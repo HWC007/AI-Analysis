@@ -102,7 +102,7 @@ def main():
     parser.add_argument("--replace", action="store_true")
     args = parser.parse_args()
 
-    input_path, output_path = Path(args.input), Path(args.output)
+    input_path, output_path = Path(args.input_path), Path(args.output_path)
     if not input_path.is_file(): raise RuntimeError(f"Input file not found: {input_path}")
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     if not payload.get("usernames"): raise RuntimeError("Input JSON must contain a non-empty usernames array.")
