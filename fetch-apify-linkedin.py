@@ -56,21 +56,14 @@ def request_json(url, method="GET", payload=None, timeout=60):
         raise RuntimeError(f"Apify API HTTP {exc.code}: {detail}") from exc
 
 
-def fetch(token, payload, poll_interval, run_timeout):
+def wait_for_run(token, run_id, poll_interval, run_timeout):
     query = urllib.parse.urlencode({"token": token})
-    start_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?{query}"
-    started = request_json(start_url, method="POST", payload=payload, timeout=60)
-    run = started.get("data", started)
-    run_id = run.get("id")
-    if not run_id:
-        raise RuntimeError(f"Apify did not return a run ID: {started}")
-
     status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?{query}"
     dataset_url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items?{query}"
     terminal_success = {"SUCCEEDED"}
     terminal_failure = {"FAILED", "ABORTED", "TIMED-OUT"}
     deadline = time.monotonic() + run_timeout
-    print(f"Started Apify run {run_id}; waiting for completion...")
+    print(f"Waiting for Apify run {run_id}...")
     while True:
         status_data = request_json(status_url)
         status = status_data.get("data", status_data).get("status")
@@ -82,9 +75,34 @@ def fetch(token, payload, poll_interval, run_timeout):
         if time.monotonic() >= deadline:
             raise TimeoutError(f"Apify run {run_id} did not finish within {run_timeout} seconds.")
         time.sleep(poll_interval)
-
     result = request_json(dataset_url, timeout=120)
     return result if isinstance(result, list) else [result]
+
+
+def fetch(token, payload, poll_interval, run_timeout):
+    query = urllib.parse.urlencode({"token": token})
+    start_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?{query}"
+    started = request_json(start_url, method="POST", payload=payload, timeout=60)
+    run = started.get("data", started)
+    run_id = run.get("id")
+    if not run_id:
+        raise RuntimeError(f"Apify did not return a run ID: {started}")
+
+    print(f"Started Apify run {run_id}.")
+    return wait_for_run(token, run_id, poll_interval, run_timeout)
+
+
+def fetch_last_run(token, poll_interval, run_timeout):
+    """Download the most recent Actor run without starting a new run."""
+    query = urllib.parse.urlencode({"token": token})
+    url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs/last?{query}"
+    latest = request_json(url)
+    run = latest.get("data", latest)
+    run_id = run.get("id")
+    if not run_id:
+        raise RuntimeError(f"Apify did not return a last-run ID: {latest}")
+    print(f"Using last Apify run {run_id}.")
+    return wait_for_run(token, run_id, poll_interval, run_timeout)
 
 
 def structured(raw, start_id):
@@ -127,7 +145,7 @@ def structured(raw, start_id):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", dest="input_path", required=True)
+    parser.add_argument("--input", dest="input_path", default="")
     parser.add_argument("--output", dest="output_path", default=".\\Apify-raw-structured.csv")
     parser.add_argument("--token", default="")
     parser.add_argument("--token-file", default=".\\apify-api.txt")
@@ -135,13 +153,20 @@ def main():
     parser.add_argument("--replace", action="store_true")
     parser.add_argument("--poll-interval", type=int, default=10, help="Seconds between Apify status checks")
     parser.add_argument("--run-timeout", type=int, default=1800, help="Maximum seconds to wait for the Actor")
+    parser.add_argument("--last-run", action="store_true", help="Fetch the latest completed Actor run without starting a new run")
     args = parser.parse_args()
 
-    input_path, output_path = Path(args.input_path), Path(args.output_path)
-    if not input_path.is_file(): raise RuntimeError(f"Input file not found: {input_path}")
-    payload = json.loads(input_path.read_text(encoding="utf-8"))
-    if not payload.get("usernames"): raise RuntimeError("Input JSON must contain a non-empty usernames array.")
-    raw = fetch(read_token(args.token, Path(args.token_file)), payload, args.poll_interval, args.run_timeout)
+    output_path = Path(args.output_path)
+    token = read_token(args.token, Path(args.token_file))
+    if args.last_run:
+        raw = fetch_last_run(token, args.poll_interval, args.run_timeout)
+    else:
+        if not args.input_path: raise RuntimeError("Provide --input or use --last-run.")
+        input_path = Path(args.input_path)
+        if not input_path.is_file(): raise RuntimeError(f"Input file not found: {input_path}")
+        payload = json.loads(input_path.read_text(encoding="utf-8"))
+        if not payload.get("usernames"): raise RuntimeError("Input JSON must contain a non-empty usernames array.")
+        raw = fetch(token, payload, args.poll_interval, args.run_timeout)
     new_rows = structured(raw, args.starting_id)
     existing = []
     if not args.replace and output_path.is_file():
