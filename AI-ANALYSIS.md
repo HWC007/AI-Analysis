@@ -38,6 +38,16 @@ python .\analyze-apify-ai.py --workers 4
 
 Company research is performed once per normalized company name, so multiple profiles at the same company reuse the same research. Console output is forced to UTF-8 for European names and accents.
 
+### Progress display
+
+While the analyzer is running, it displays a live terminal progress bar:
+
+```text
+[##############................] 46.00% (23/50) | 0.18/s | ETA 2.5m | workers=4
+```
+
+The display shows completed profiles, total profiles, percentage, processing rate, estimated time remaining, and the configured worker count. It updates as each concurrent profile finishes and does not change the CSV format.
+
 ## Analysis task
 
 You are a prospect qualification specialist for injection-molding manufacturers and professionals.
