@@ -82,10 +82,10 @@ Priority 4 affects weighting only, not the final judgement. Explain the keyword 
 
 ### Priority 5 — Moldex3D false-positive avoidance
 
-Search every section for `Moldex3D` and `Moldex`.
+Search only the LinkedIn/profile fields for `Moldex3D` and `Moldex`: `about`, `headline`, `Skills`, `top_skills`, current-position fields, and previous-position fields. Do not use GPT-4o web-research results as evidence for Priority 5. Web-research mentions must be ignored for this priority.
 
-- `Moldex3D` always refers to injection-molding simulation software and satisfies Priority 5.
-- If only `Moldex` appears, it satisfies Priority 5 only when the context refers to molding simulation software, CoreTech System, CAE, or plastic simulation.
+- `Moldex3D` in the LinkedIn/profile content always refers to injection-molding simulation software and satisfies Priority 5.
+- If only `Moldex` appears in the LinkedIn/profile content, it satisfies Priority 5 only when the context refers to molding simulation software, CoreTech System, CAE, or plastic simulation.
 - An unrelated Moldex company, respirator, hearing-protection product, or other non-molding reference does not satisfy Priority 5.
 
 Explain the context, not just the keyword match.
