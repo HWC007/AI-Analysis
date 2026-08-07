@@ -133,6 +133,24 @@ def analyze_one(row, base_url, model, key, research, retries):
     }
 
 
+def show_progress(completed, total, started_at, workers):
+    if total <= 0:
+        return
+    elapsed = max(time.monotonic() - started_at, 0.001)
+    rate = completed / elapsed
+    remaining = max(total - completed, 0)
+    eta = remaining / rate if rate else 0
+    width = 30
+    filled = int(width * completed / total)
+    bar = "#" * filled + "." * (width - filled)
+    percent = completed * 100 / total
+    eta_text = "done" if completed >= total else f"ETA {eta/60:.1f}m"
+    message = f"\r[{bar}] {percent:6.2f}% ({completed}/{total}) | {rate:.2f}/s | {eta_text} | workers={workers}"
+    print(message, end="", flush=True)
+    if completed >= total:
+        print()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default=".\\Apify-raw-structured.csv"); parser.add_argument("--output", default=".\\Apify-raw-structured.csv")
@@ -164,6 +182,8 @@ def main():
         return index, analyze_one(row, args.base_url, args.model, key, research_cache.get(company_key, "No company research available."), args.max_retries)
 
     completed = 0
+    started_at = time.monotonic()
+    show_progress(0, len(targets), started_at, args.workers)
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
         futures = {pool.submit(process, index, row): index for index, row in enumerate(targets)}
         for future in as_completed(futures):
@@ -175,6 +195,7 @@ def main():
             except Exception as exc:
                 targets[index]["AI_Judgement"], targets[index]["AI_Weighting"], targets[index]["AI_Explanation"] = "Error", 0, str(exc)
             completed += 1
+            show_progress(completed, len(targets), started_at, args.workers)
             if completed % args.batch_size == 0 or completed == len(targets):
                 with open(args.output, "w", newline="", encoding="utf-8-sig") as f:
                     writer = csv.DictWriter(f, fieldnames=rows[0].keys()); writer.writeheader(); writer.writerows(rows)
