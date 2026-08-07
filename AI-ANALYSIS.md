@@ -24,14 +24,13 @@ Company research is performed once per normalized company name, so multiple prof
 
 ### Progress display
 
-While the analyzer is running, it displays two live terminal progress bars: one for company web research and one for profile AI analysis:
+While the analyzer is running, it displays one live terminal progress bar for profile-row AI analysis:
 
 ```text
-Company research: [##############................] 46.00% (23/50) | 0.18/s | ETA 2.5m | workers=8 | saved cache
-AI analysis:      [##############................] 46.00% (23/50) | 0.18/s | ETA 2.5m | workers=8
+AI analysis: [##############................] 46.00% (23/50) | 0.18/s | ETA 2.5m | workers=8
 ```
 
-The research bar counts unique companies, not rows. It includes already cached companies immediately and advances only for new web searches; each completed search is written to the JSON cache. The AI bar counts profile rows. Both show completed/total, percentage, processing rate, ETA, and worker count. This avoids displaying misleading batch counts such as 50 bars for 500 rows.
+Company research runs before profile analysis and is cached silently in `company-research-cache.json`. Only the AI analysis bar is displayed, and it counts profile rows—not research batches—so 1,000 rows produce one bar from `0/1000` to `1000/1000`.
 
 ## Analysis task
 

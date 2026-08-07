@@ -206,15 +206,12 @@ def main():
         research_cache = {key_name: "Web search disabled by command-line option." for key_name in companies}
     else:
         missing = {key_name: company for key_name, company in companies.items() if key_name not in research_cache}
-        research_started = time.monotonic()
-        show_progress("Company research", len(companies) - len(missing), len(companies), research_started, args.workers, "reused cache")
         with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
             futures = {pool.submit(search_company, args.base_url, args.research_model, key, company, args.max_retries): key_name for key_name, company in missing.items()}
             for future in as_completed(futures):
                 key_name = futures[future]
                 try: research_cache[key_name] = future.result()
                 except Exception as exc: research_cache[key_name] = f"Web research failed: {exc}"
-                show_progress("Company research", len(companies) - len(missing) + sum(1 for key_name in missing if key_name in research_cache), len(companies), research_started, args.workers, "saved cache")
                 save_research_cache(cache_path, research_cache, companies)
         if not missing:
             save_research_cache(cache_path, research_cache, companies)
