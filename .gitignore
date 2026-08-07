@@ -1,5 +1,6 @@
 apify-api.txt
 openai-api.txt
+company-research-cache.json
 __pycache__/
 apify-input.json
 Apify-raw-structured.csv

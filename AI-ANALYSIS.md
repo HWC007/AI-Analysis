@@ -28,7 +28,7 @@ python .\analyze-apify-ai.py `
 
 The default endpoint is `http://ai.moldex3d.com:4000/v1` and the default model is `luna`. Override them with `-BaseUrl` and `-Model` when needed. The endpoint must expose an OpenAI-compatible `/chat/completions` route.
 
-The Python analyzer uses two stages: `gpt-4o` calls `/responses` with `web_search_preview` to research each unique company, then `gpt-5.6-luna` analyzes the profile using that cached research. Use `--research-model` to change the research model or `--no-web-search` to disable it intentionally.
+The Python analyzer uses two stages: `gpt-4o` calls `/responses` with `web_search_preview` to research each unique company, then `gpt-5.6-luna` analyzes the profile using that research. Research is persisted in `company-research-cache.json`, which is ignored by Git, so later runs reuse existing results instead of searching the same company again. Use `--research-model` to change the research model, `--research-cache` to choose another cache file, or `--no-web-search` to disable searching intentionally.
 
 Research and profile analysis run concurrently. The default is 4 workers; lower it if the gateway rate-limits requests, or increase it cautiously:
 
@@ -36,17 +36,18 @@ Research and profile analysis run concurrently. The default is 4 workers; lower 
 python .\analyze-apify-ai.py --workers 4
 ```
 
-Company research is performed once per normalized company name, so multiple profiles at the same company reuse the same research. Console output is forced to UTF-8 for European names and accents.
+Company research is performed once per normalized company name, so multiple profiles at the same company reuse the same research. Use `--refresh-research` to ignore and replace the existing cache. Console output is forced to UTF-8 for European names and accents.
 
 ### Progress display
 
-While the analyzer is running, it displays a live terminal progress bar:
+While the analyzer is running, it displays two live terminal progress bars: one for company web research and one for profile AI analysis:
 
 ```text
-[##############................] 46.00% (23/50) | 0.18/s | ETA 2.5m | workers=4
+Company research: [##############................] 46.00% (23/50) | 0.18/s | ETA 2.5m | workers=8 | saved cache
+AI analysis:      [##############................] 46.00% (23/50) | 0.18/s | ETA 2.5m | workers=8
 ```
 
-The display shows completed profiles, total profiles, percentage, processing rate, estimated time remaining, and the configured worker count. It updates as each concurrent profile finishes and does not change the CSV format.
+The research bar counts unique companies, not rows. It includes already cached companies immediately and advances only for new web searches; each completed search is written to the JSON cache. The AI bar counts profile rows. Both show completed/total, percentage, processing rate, ETA, and worker count. This avoids displaying misleading batch counts such as 50 bars for 500 rows.
 
 ## Analysis task
 

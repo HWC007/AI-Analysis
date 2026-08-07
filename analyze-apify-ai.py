@@ -133,7 +133,35 @@ def analyze_one(row, base_url, model, key, research, retries):
     }
 
 
-def show_progress(completed, total, started_at, workers):
+def load_research_cache(path):
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        cache = {}
+        for key, value in data.items():
+            cache[key] = value.get("report", "") if isinstance(value, dict) else str(value)
+        return cache
+    except Exception as exc:
+        print(f"Warning: could not load research cache {path}: {exc}", file=sys.stderr)
+        return {}
+
+
+def save_research_cache(path, cache, company_names):
+    payload = {
+        key: {
+            "company": company_names.get(key, key),
+            "researched_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "report": report,
+        }
+        for key, report in sorted(cache.items())
+    }
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def show_progress(label, completed, total, started_at, workers, extra=""):
     if total <= 0:
         return
     elapsed = max(time.monotonic() - started_at, 0.001)
@@ -145,7 +173,9 @@ def show_progress(completed, total, started_at, workers):
     bar = "#" * filled + "." * (width - filled)
     percent = completed * 100 / total
     eta_text = "done" if completed >= total else f"ETA {eta/60:.1f}m"
-    message = f"\r[{bar}] {percent:6.2f}% ({completed}/{total}) | {rate:.2f}/s | {eta_text} | workers={workers}"
+    message = f"\r{label}: [{bar}] {percent:6.2f}% ({completed}/{total}) | {rate:.2f}/s | {eta_text} | workers={workers}"
+    if extra:
+        message += f" | {extra}"
     print(message, end="", flush=True)
     if completed >= total:
         print()
@@ -158,24 +188,36 @@ def main():
     parser.add_argument("--base-url", default="http://ai.moldex3d.com:4000/v1"); parser.add_argument("--model", default="gpt-5.6-luna")
     parser.add_argument("--research-model", default="gpt-4o", help="Model used with /responses and web_search_preview")
     parser.add_argument("--no-web-search", action="store_true")
+    parser.add_argument("--research-cache", default=".\\company-research-cache.json", help="Persistent JSON file for company research")
+    parser.add_argument("--refresh-research", action="store_true", help="Ignore existing cached company research")
     parser.add_argument("--workers", type=int, default=4, help="Concurrent web research/analysis workers")
+    parser.add_argument("--limit", type=int, default=0, help="Maximum number of target profiles to process; 0 means all")
     parser.add_argument("--batch-size", type=int, default=10); parser.add_argument("--max-retries", type=int, default=3); parser.add_argument("--reanalyze-all", action="store_true")
     args = parser.parse_args()
     with open(args.input, newline="", encoding="utf-8-sig") as f: rows = list(csv.DictReader(f))
-    targets = [r for r in rows if args.reanalyze_all or not r.get("AI_Judgement", "").strip() or r.get("AI_Judgement") == "Error"]
+    targets = [r for r in rows if args.reanalyze_all or not r.get("AI_Judgement", "").strip() or r.get("AI_Judgement") == "Error" or not r.get("AI_Explanation", "").strip()]
+    if args.limit > 0:
+        targets = targets[:args.limit]
     key = token_value(args.api_key, args.api_key_file); print(f"Profiles to analyze: {len(targets)}")
-    research_cache = {}
+    cache_path = Path(args.research_cache)
+    research_cache = {} if args.refresh_research else load_research_cache(cache_path)
     companies = {str(row.get("Current_Company", "")).strip().casefold(): str(row.get("Current_Company", "")).strip() for row in targets if str(row.get("Current_Company", "")).strip()}
     if args.no_web_search:
         research_cache = {key_name: "Web search disabled by command-line option." for key_name in companies}
     else:
+        missing = {key_name: company for key_name, company in companies.items() if key_name not in research_cache}
+        research_started = time.monotonic()
+        show_progress("Company research", len(companies) - len(missing), len(companies), research_started, args.workers, "reused cache")
         with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-            futures = {pool.submit(search_company, args.base_url, args.research_model, key, company, args.max_retries): key_name for key_name, company in companies.items()}
+            futures = {pool.submit(search_company, args.base_url, args.research_model, key, company, args.max_retries): key_name for key_name, company in missing.items()}
             for future in as_completed(futures):
                 key_name = futures[future]
                 try: research_cache[key_name] = future.result()
                 except Exception as exc: research_cache[key_name] = f"Web research failed: {exc}"
-                print(f"Company research cached: {companies[key_name]}")
+                show_progress("Company research", len(companies) - len(missing) + sum(1 for key_name in missing if key_name in research_cache), len(companies), research_started, args.workers, "saved cache")
+                save_research_cache(cache_path, research_cache, companies)
+        if not missing:
+            save_research_cache(cache_path, research_cache, companies)
 
     def process(index, row):
         company_key = str(row.get("Current_Company", "")).strip().casefold()
@@ -183,7 +225,7 @@ def main():
 
     completed = 0
     started_at = time.monotonic()
-    show_progress(0, len(targets), started_at, args.workers)
+    show_progress("AI analysis", 0, len(targets), started_at, args.workers)
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
         futures = {pool.submit(process, index, row): index for index, row in enumerate(targets)}
         for future in as_completed(futures):
@@ -195,7 +237,7 @@ def main():
             except Exception as exc:
                 targets[index]["AI_Judgement"], targets[index]["AI_Weighting"], targets[index]["AI_Explanation"] = "Error", 0, str(exc)
             completed += 1
-            show_progress(completed, len(targets), started_at, args.workers)
+            show_progress("AI analysis", completed, len(targets), started_at, args.workers)
             if completed % args.batch_size == 0 or completed == len(targets):
                 with open(args.output, "w", newline="", encoding="utf-8-sig") as f:
                     writer = csv.DictWriter(f, fieldnames=rows[0].keys()); writer.writeheader(); writer.writerows(rows)
