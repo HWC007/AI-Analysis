@@ -6,6 +6,8 @@ import csv
 import json
 import os
 import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -42,15 +44,46 @@ def read_token(explicit, token_path):
     return token
 
 
-def fetch(token, payload):
+def request_json(url, method="GET", payload=None, timeout=60):
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    request = urllib.request.Request(url, data=body, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Apify API HTTP {exc.code}: {detail}") from exc
+
+
+def fetch(token, payload, poll_interval, run_timeout):
     query = urllib.parse.urlencode({"token": token})
-    url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items?{query}"
-    request = urllib.request.Request(
-        url, data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"}, method="POST"
-    )
-    with urllib.request.urlopen(request, timeout=600) as response:
-        result = json.loads(response.read().decode("utf-8"))
+    start_url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/runs?{query}"
+    started = request_json(start_url, method="POST", payload=payload, timeout=60)
+    run = started.get("data", started)
+    run_id = run.get("id")
+    if not run_id:
+        raise RuntimeError(f"Apify did not return a run ID: {started}")
+
+    status_url = f"https://api.apify.com/v2/actor-runs/{run_id}?{query}"
+    dataset_url = f"https://api.apify.com/v2/actor-runs/{run_id}/dataset/items?{query}"
+    terminal_success = {"SUCCEEDED"}
+    terminal_failure = {"FAILED", "ABORTED", "TIMED-OUT"}
+    deadline = time.monotonic() + run_timeout
+    print(f"Started Apify run {run_id}; waiting for completion...")
+    while True:
+        status_data = request_json(status_url)
+        status = status_data.get("data", status_data).get("status")
+        print(f"Apify status: {status}")
+        if status in terminal_success:
+            break
+        if status in terminal_failure:
+            raise RuntimeError(f"Apify run {run_id} ended with status {status}: {status_data}")
+        if time.monotonic() >= deadline:
+            raise TimeoutError(f"Apify run {run_id} did not finish within {run_timeout} seconds.")
+        time.sleep(poll_interval)
+
+    result = request_json(dataset_url, timeout=120)
     return result if isinstance(result, list) else [result]
 
 
@@ -100,13 +133,15 @@ def main():
     parser.add_argument("--token-file", default=".\\apify-api.txt")
     parser.add_argument("--starting-id", type=int, default=1)
     parser.add_argument("--replace", action="store_true")
+    parser.add_argument("--poll-interval", type=int, default=10, help="Seconds between Apify status checks")
+    parser.add_argument("--run-timeout", type=int, default=1800, help="Maximum seconds to wait for the Actor")
     args = parser.parse_args()
 
     input_path, output_path = Path(args.input_path), Path(args.output_path)
     if not input_path.is_file(): raise RuntimeError(f"Input file not found: {input_path}")
     payload = json.loads(input_path.read_text(encoding="utf-8"))
     if not payload.get("usernames"): raise RuntimeError("Input JSON must contain a non-empty usernames array.")
-    raw = fetch(read_token(args.token, Path(args.token_file)), payload)
+    raw = fetch(read_token(args.token, Path(args.token_file)), payload, args.poll_interval, args.run_timeout)
     new_rows = structured(raw, args.starting_id)
     existing = []
     if not args.replace and output_path.is_file():
