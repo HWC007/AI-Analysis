@@ -1,26 +1,10 @@
 # GPT-5 prospect analysis
 
-`analyze-apify-ai.ps1` is separate from the Apify fetch script. It reads the structured CSV, analyzes blank AI rows through the configured OpenAI-compatible LiteLLM endpoint, and updates the CSV in place. Existing nonblank AI values are preserved unless `-ReanalyzeAll` is used.
+`analyze-apify-ai.py` reads the structured CSV, analyzes rows missing AI results through the configured OpenAI-compatible LiteLLM endpoint, and updates the CSV in place. Existing completed results are preserved unless `--reanalyze-all` is used.
 
-Create `openai-api.txt` containing only your LiteLLM virtual key. It is ignored by Git.
+Create `openai-api.txt` containing only your LiteLLM virtual key. It is ignored by Git. The script saves after each batch. Do not commit API keys or generated CSV files to a public repository.
 
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\analyze-apify-ai.ps1 `
-  -InputPath .\Apify-raw-structured.csv `
-  -OutputPath .\Apify-raw-structured.csv
-```
-
-To reanalyze every profile:
-
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\analyze-apify-ai.ps1 -ReanalyzeAll
-```
-
-The script saves after each batch. Do not commit API keys or generated CSV files to a public repository.
-
-Python equivalent:
-
-```powershell
+```text
 python .\analyze-apify-ai.py `
   --input .\Apify-raw-structured.csv `
   --output .\Apify-raw-structured.csv
@@ -32,7 +16,7 @@ The Python analyzer uses two stages: `gpt-4o` calls `/responses` with `web_searc
 
 Research and profile analysis run concurrently. The default is 4 workers; lower it if the gateway rate-limits requests, or increase it cautiously:
 
-```powershell
+```text
 python .\analyze-apify-ai.py --workers 4
 ```
 

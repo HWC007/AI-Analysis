@@ -2,7 +2,7 @@
 
 This reproduces the n8n mapping from the LinkedIn scraper into the same structure as `Apify.csv`. It includes the three blank AI fields required by the qualification workflow: `AI_Judgement`, `AI_Weighting`, and `AI_Explanation`.
 
-## Run on Windows
+## Run
 
 You can store the token in a local `apify-api.txt` file containing only the token. The file is ignored by Git:
 
@@ -10,20 +10,14 @@ You can store the token in a local `apify-api.txt` file containing only the toke
 apify_api_your_token_here
 ```
 
-Alternatively, set the token for the current PowerShell session:
-
-```powershell
-$env:APIFY_TOKEN = 'paste-a-new-apify-token-here'
-```
-
 Prepare an input file based on [apify-input.example.json](apify-input.example.json), replacing the example URL with the LinkedIn URLs to scrape.
 
-Run the export. Existing output is preserved by default; new profiles are appended, duplicate LinkedIn URLs are skipped, and new AI fields are left blank for the analysis step to populate:
+Run the Python fetcher. Existing output is preserved by default; new profiles are appended, duplicate LinkedIn URLs are skipped, and new AI fields are left blank for the analysis step to populate:
 
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File .\fetch-apify-linkedin.ps1 `
-  -InputPath .\apify-input.json `
-  -OutputPath .\Apify-raw-structured.csv
+```text
+python .\fetch-apify-linkedin.py `
+  --input .\apify-input.json `
+  --output .\Apify-raw-structured.csv
 ```
 
 To intentionally replace the output with only the current scrape, add `-Replace`.
@@ -34,7 +28,7 @@ The Python fetcher starts the Actor asynchronously, polls its status, and downlo
 
 Use `--last-run` when you do not want to start a new Actor run or provide LinkedIn URLs. The fetcher retrieves the latest run, checks its status, waits if necessary, and then appends its dataset:
 
-```powershell
+```text
 python .\fetch-apify-linkedin.py `
   --last-run `
   --output .\Apify-raw-structured.csv
@@ -44,7 +38,7 @@ This mode preserves existing rows and skips duplicate LinkedIn URLs. It does not
 
 Polling and timeout options:
 
-```powershell
+```text
 python .\fetch-apify-linkedin.py `
   --last-run `
   --output .\Apify-raw-structured.csv `
@@ -56,14 +50,4 @@ python .\fetch-apify-linkedin.py `
 
 Do not commit an Apify token or raw personal data to a public repository. The token previously visible in the n8n export should be revoked and replaced.
 
-## Python alternative
-
-The equivalent Python fetcher is [fetch-apify-linkedin.py](fetch-apify-linkedin.py):
-
-```powershell
-python .\fetch-apify-linkedin.py `
-  --input .\apify-input.json `
-  --output .\Apify-raw-structured.csv
-```
-
-The Python fetcher supports the same options as the PowerShell version, including `--replace`, `--poll-interval`, and `--run-timeout`.
+The Python fetcher also supports `--replace`, `--poll-interval`, and `--run-timeout`.
