@@ -12,7 +12,7 @@ python .\analyze-apify-ai.py `
 
 The default endpoint is `http://ai.moldex3d.com:4000/v1` and the default model is `luna`. Override them with `-BaseUrl` and `-Model` when needed. The endpoint must expose an OpenAI-compatible `/chat/completions` route.
 
-The Python analyzer uses two stages: `gpt-4o` calls `/responses` with `web_search_preview` to research each unique company, then `gpt-5.6-luna` analyzes the profile using that research. Research is persisted in `company-research-cache.json`, which is ignored by Git, so later runs reuse existing results instead of searching the same company again. Use `--research-model` to change the research model, `--research-cache` to choose another cache file, or `--no-web-search` to disable searching intentionally.
+The Python analyzer uses two stages: `gpt-5.2` calls `/responses` with `web_search_preview` to research each unique company, then `gpt-5.6-luna` analyzes the profile using that research. Research is persisted in `company-research-cache.json`, which is ignored by Git, so later runs reuse existing results instead of searching the same company again. Use `--refresh-research` after changing the research model if you want existing cached companies researched again with the new model. Use `--research-model` to change the research model, `--research-cache` to choose another cache file, or `--no-web-search` to disable searching intentionally.
 
 Research and profile analysis run concurrently. The default is 4 workers; lower it if the gateway rate-limits requests, or increase it cautiously:
 
@@ -82,7 +82,7 @@ Priority 4 affects weighting only, not the final judgement. Explain the keyword 
 
 ### Priority 5 — Moldex3D false-positive avoidance
 
-Search only the LinkedIn/profile fields for `Moldex3D` and `Moldex`: `about`, `headline`, `Skills`, `top_skills`, current-position fields, and previous-position fields. Do not use GPT-4o web-research results as evidence for Priority 5. Web-research mentions must be ignored for this priority.
+Search only the LinkedIn/profile fields for `Moldex3D` and `Moldex`: `about`, `headline`, `Skills`, `top_skills`, current-position fields, and previous-position fields. Do not use GPT-5.2 web-research results as evidence for Priority 5. Web-research mentions must be ignored for this priority.
 
 - `Moldex3D` in the LinkedIn/profile content always refers to injection-molding simulation software and satisfies Priority 5.
 - If only `Moldex` appears in the LinkedIn/profile content, it satisfies Priority 5 only when the context refers to molding simulation software, CoreTech System, CAE, or plastic simulation.

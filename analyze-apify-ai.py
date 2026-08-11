@@ -17,7 +17,7 @@ PRIORITY 1 — COMPANY: Analyze Current_Company for service providers that desig
 PRIORITY 2 — CURRENT ROLE: Analyze Current_Position, description, headline, and tenure. Service providers/engineering firms permit high inference for technical/design roles. For OEMs, require plastic-specific evidence such as plastic-part design, lightweight components, enclosures, tooling, injection molding, mold trials, Moldflow, or Cadmould.
 PRIORITY 3 — BACKGROUND: Analyze all three past roles/descriptions/tenures, About, Skills, and top_skills for any injection molding, mold design, plastics processing, tooling, mold trials, or plastic-part experience.
 PRIORITY 4 — SOFTWARE: Search case-insensitively for Moldflow, Cadmould, and Solidworks plastic. Check Skills separately from all other sections. p4_in_skills_only is true only if found in Skills and nowhere else. p4_in_other_sections is true if found outside Skills. Priority 4 is informational only.
-PRIORITY 5 — MOLDEX: Evaluate this priority ONLY from LinkedIn/profile fields: about, headline, Skills, top_skills, current-position fields, and previous-position fields. Ignore the GPT-4o web-research text completely for Priority 5. Moldex3D in LinkedIn content always satisfies Priority 5. If only Moldex appears, satisfy it only when the LinkedIn context refers to molding simulation, CoreTech, CAE, or plastic simulation; do not use web-research mentions or unrelated Moldex products/companies as evidence.
+PRIORITY 5 — MOLDEX: Evaluate this priority ONLY from LinkedIn/profile fields: about, headline, Skills, top_skills, current-position fields, and previous-position fields. Ignore the GPT-5.2 web-research text completely for Priority 5. Moldex3D in LinkedIn content always satisfies Priority 5. If only Moldex appears, satisfy it only when the LinkedIn context refers to molding simulation, CoreTech, CAE, or plastic simulation; do not use web-research mentions or unrelated Moldex products/companies as evidence.
 
 JUDGEMENT: Yes if any of P1, P2, P3, or P5 is true; No only if all four are false. Priority 4 never affects judgement.
 Return only valid JSON. Provide concise but evidence-based explanations for every priority, with separate labeled sections. Target approximately 1,000–1,800 characters and do not exceed 2,500 characters. Include the strongest evidence and important missing evidence; do not repeat the entire profile.''' 
@@ -101,14 +101,14 @@ def search_company(base_url, model, key, company, retries):
             if data.get("output_text"): return data["output_text"]
             texts = [content.get("text", "") for output in data.get("output", []) for content in output.get("content", []) if content.get("type") == "output_text"]
             if texts: return "\n".join(texts)
-            raise RuntimeError("GPT-4o web search returned no text")
+            raise RuntimeError("GPT-5.2 web search returned no text")
         except Exception as exc:
-            if attempt == retries - 1: raise RuntimeError(f"GPT-4o web search failed: {exc}")
+            if attempt == retries - 1: raise RuntimeError(f"GPT-5.2 web search failed: {exc}")
             time.sleep(min(30, 2 ** (attempt + 1)))
 
 
 def call(base_url, model, key, profile, research, retries):
-    user_content = "GPT-4o WEB RESEARCH FOR PRIORITY 1:\n" + research + "\n\nPROSPECT DATA:\n" + json.dumps(profile, ensure_ascii=False)
+    user_content = "GPT-5.2 WEB RESEARCH FOR PRIORITY 1:\n" + research + "\n\nPROSPECT DATA:\n" + json.dumps(profile, ensure_ascii=False)
     body = {"model": model, "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_content}]}
     request = urllib.request.Request(base_url.rstrip("/") + "/chat/completions", data=json.dumps(body).encode(), headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"}, method="POST")
     for attempt in range(retries):
@@ -186,7 +186,7 @@ def main():
     parser.add_argument("--input", default=".\\Apify-raw-structured.csv"); parser.add_argument("--output", default=".\\Apify-raw-structured.csv")
     parser.add_argument("--api-key-file", default=".\\openai-api.txt"); parser.add_argument("--api-key", default="")
     parser.add_argument("--base-url", default="http://ai.moldex3d.com:4000/v1"); parser.add_argument("--model", default="gpt-5.6-luna")
-    parser.add_argument("--research-model", default="gpt-4o", help="Model used with /responses and web_search_preview")
+    parser.add_argument("--research-model", default="gpt-5.2", help="Model used with /responses and web_search_preview")
     parser.add_argument("--no-web-search", action="store_true")
     parser.add_argument("--research-cache", default=".\\company-research-cache.json", help="Persistent JSON file for company research")
     parser.add_argument("--refresh-research", action="store_true", help="Ignore existing cached company research")
