@@ -4,3 +4,4 @@ company-research-cache.json
 __pycache__/
 apify-input.json
 Apify-raw-structured.csv
+Apify.csv
