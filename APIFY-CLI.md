@@ -24,6 +24,20 @@ To intentionally replace the output with only the current scrape, add `-Replace`
 
 The Python fetcher starts the Actor asynchronously, polls its status, and downloads the dataset only after the run reaches `SUCCEEDED`. It safely handles profiles with fewer than four experience entries and writes empty values where fields are absent.
 
+### More than 500 URLs
+
+Apify accepts at most 500 LinkedIn URLs per Actor run. The fetcher automatically splits a larger `usernames` list into batches of 500, waits for each run to finish, and merges every completed batch into the same output CSV. You only need one command:
+
+```text
+python .\fetch-apify-linkedin.py `
+  --input .\apify-input.json `
+  --output .\Apify-raw-structured.csv `
+  --poll-interval 100 `
+  --run-timeout 900
+```
+
+Use `--batch-size` to choose a smaller batch size when needed; it cannot exceed 500. Each completed batch is saved immediately, so earlier batches remain in the CSV if a later Apify run fails.
+
 ### Fetch the latest existing Apify run
 
 Use `--last-run` when you do not want to start a new Actor run or provide LinkedIn URLs. The fetcher retrieves the latest run, checks its status, waits if necessary, and then appends its dataset:

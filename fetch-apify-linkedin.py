@@ -153,21 +153,15 @@ def main():
     parser.add_argument("--replace", action="store_true")
     parser.add_argument("--poll-interval", type=int, default=10, help="Seconds between Apify status checks")
     parser.add_argument("--run-timeout", type=int, default=1800, help="Maximum seconds to wait for the Actor")
+    parser.add_argument("--batch-size", type=int, default=500, help="Maximum URLs submitted per Apify run")
     parser.add_argument("--last-run", action="store_true", help="Fetch the latest completed Actor run without starting a new run")
     args = parser.parse_args()
 
+    if args.batch_size < 1 or args.batch_size > 500:
+        raise RuntimeError("--batch-size must be between 1 and 500 because Apify accepts at most 500 URLs per run.")
     output_path = Path(args.output_path)
     token = read_token(args.token, Path(args.token_file))
-    if args.last_run:
-        raw = fetch_last_run(token, args.poll_interval, args.run_timeout)
-    else:
-        if not args.input_path: raise RuntimeError("Provide --input or use --last-run.")
-        input_path = Path(args.input_path)
-        if not input_path.is_file(): raise RuntimeError(f"Input file not found: {input_path}")
-        payload = json.loads(input_path.read_text(encoding="utf-8"))
-        if not payload.get("usernames"): raise RuntimeError("Input JSON must contain a non-empty usernames array.")
-        raw = fetch(token, payload, args.poll_interval, args.run_timeout)
-    new_rows = structured(raw, args.starting_id)
+
     existing = []
     if not args.replace and output_path.is_file():
         with output_path.open(newline="", encoding="utf-8-sig") as f:
@@ -177,18 +171,48 @@ def main():
     numeric_ids = [int(r["id"]) for r in existing if str(r.get("id", "")).isdigit()]
     next_id = max(numeric_ids, default=args.starting_id - 1) + 1
     seen = {str(r.get("LinkedIn_URL", "")).strip().rstrip("/").lower() for r in existing if r.get("LinkedIn_URL")}
-    added = []
-    for row in new_rows:
-        url = str(row["LinkedIn_URL"]).strip().rstrip("/").lower()
-        if url and url in seen: continue
-        row["id"] = next_id; next_id += 1; added.append(row)
-        if url: seen.add(url)
-    rows = existing + added
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore")
-        writer.writeheader(); writer.writerows(rows)
-    print(f"Saved {len(rows)} total profiles to {output_path}; added {len(added)}; skipped {len(new_rows)-len(added)} duplicates.")
+    total_added = 0
+    total_skipped = 0
+
+    def merge_and_save(raw):
+        nonlocal next_id, total_added, total_skipped
+        new_rows = structured(raw, next_id)
+        added = []
+        for row in new_rows:
+            url = str(row["LinkedIn_URL"]).strip().rstrip("/").lower()
+            if not url or url in seen:
+                total_skipped += 1
+                continue
+            row["id"] = next_id
+            next_id += 1
+            added.append(row)
+            seen.add(url)
+        existing.extend(added)
+        total_added += len(added)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=FIELDS, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(existing)
+        print(f"Saved {len(existing)} total profiles; added {len(added)} in this batch; skipped {total_skipped} cumulative.")
+
+    if args.last_run:
+        merge_and_save(fetch_last_run(token, args.poll_interval, args.run_timeout))
+    else:
+        if not args.input_path: raise RuntimeError("Provide --input or use --last-run.")
+        input_path = Path(args.input_path)
+        if not input_path.is_file(): raise RuntimeError(f"Input file not found: {input_path}")
+        payload = json.loads(input_path.read_text(encoding="utf-8"))
+        usernames = payload.get("usernames")
+        if not usernames: raise RuntimeError("Input JSON must contain a non-empty usernames array.")
+        batches = [usernames[i:i + args.batch_size] for i in range(0, len(usernames), args.batch_size)]
+        print(f"Submitting {len(usernames)} URLs in {len(batches)} Apify batch(es) of at most {args.batch_size}.")
+        for index, batch in enumerate(batches, start=1):
+            batch_payload = dict(payload)
+            batch_payload["usernames"] = batch
+            print(f"Starting batch {index}/{len(batches)} ({len(batch)} URLs).")
+            merge_and_save(fetch(token, batch_payload, args.poll_interval, args.run_timeout))
+    print(f"Completed: {len(existing)} total profiles in {output_path}; added {total_added}; skipped {total_skipped}.")
 
 
 if __name__ == "__main__":
