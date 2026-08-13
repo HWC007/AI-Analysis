@@ -10,7 +10,39 @@ python .\analyze-apify-ai.py `
   --output .\Apify-raw-structured.csv
 ```
 
-The default endpoint is `http://ai.moldex3d.com:4000/v1` and the default model is `luna`. Override them with `-BaseUrl` and `-Model` when needed. The endpoint must expose an OpenAI-compatible `/chat/completions` route.
+The default endpoint is `http://ai.moldex3d.com:4000/v1` and the default analysis model is `gpt-5.6-luna`. The endpoint must expose an OpenAI-compatible `/chat/completions` route.
+
+### Command-line options
+
+| Option | Function | Default / notes |
+|---|---|---|
+| `--input PATH` | Input structured CSV. | `Apify-raw-structured.csv` |
+| `--output PATH` | CSV to update. | Same input path by default. |
+| `--api-key-file PATH` | File containing the LiteLLM key. | `openai-api.txt` |
+| `--base-url URL` | LiteLLM/OpenAI-compatible endpoint. | `http://ai.moldex3d.com:4000/v1` |
+| `--model NAME` | Model for profile analysis. | `gpt-5.6-luna` |
+| `--research-model NAME` | Model used for Priority 1 web research through `/responses` and `web_search_preview`. | `gpt-5.2` |
+| `--no-web-search` | Disable company web research. Priority 1 then uses the supplied profile and a placeholder research note. | Web search enabled by default. |
+| `--research-cache PATH` | Persistent JSON file for company research results. | `company-research-cache.json` |
+| `--refresh-research` | Ignore cached company reports and research companies again. | Useful after changing `--research-model`. |
+| `--workers N` | Number of concurrent research/profile workers. | `4`; use `8` cautiously. |
+| `--limit N` | Process at most N target rows. | `0` means all pending rows. |
+| `--batch-size N` | Save the CSV after every N completed rows. | `10` |
+| `--max-retries N` | Retry failed API requests. | `3` |
+| `--reanalyze-all` | Reprocess every row, including rows with existing AI results. | Off by default; omit it for pending rows only. |
+
+Typical commands:
+
+```text
+# Analyze only rows without AI results, using GPT-5.2 web research
+python .\analyze-apify-ai.py --workers 8
+
+# Reanalyze every row and refresh all cached company research
+python .\analyze-apify-ai.py --reanalyze-all --refresh-research --workers 8
+
+# Analyze without web search
+python .\analyze-apify-ai.py --no-web-search --workers 8
+```
 
 The Python analyzer uses two stages: `gpt-5.2` calls `/responses` with `web_search_preview` to research each unique company, then `gpt-5.6-luna` analyzes the profile using that research. Research is persisted in `company-research-cache.json`, which is ignored by Git, so later runs reuse existing results instead of searching the same company again. Use `--refresh-research` after changing the research model if you want existing cached companies researched again with the new model. Use `--research-model` to change the research model, `--research-cache` to choose another cache file, or `--no-web-search` to disable searching intentionally.
 
