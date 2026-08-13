@@ -27,6 +27,7 @@ The default endpoint is `http://ai.moldex3d.com:4000/v1` and the default analysi
 | `--refresh-research` | Ignore cached company reports and research companies again. | Useful after changing `--research-model`. |
 | `--workers N` | Number of concurrent research/profile workers. | `4`; use `8` cautiously. |
 | `--limit N` | Process at most N target rows. | `0` means all pending rows. |
+| `--ids ID,...` | Reanalyze only the specified existing row IDs, including rows that already have AI results. | Example: `--ids 721,907,1401`; cannot be combined with `--reanalyze-all`. |
 | `--batch-size N` | Save the CSV after every N completed rows. | `10` |
 | `--max-retries N` | Retry failed API requests. | `3` |
 | `--reanalyze-all` | Reprocess every row, including rows with existing AI results. | Off by default; omit it for pending rows only. |
@@ -42,6 +43,9 @@ python .\analyze-apify-ai.py --reanalyze-all --refresh-research --workers 8
 
 # Analyze without web search
 python .\analyze-apify-ai.py --no-web-search --workers 8
+
+# Reanalyze only selected rows
+python .\analyze-apify-ai.py --ids 721,907,1401 --workers 8
 ```
 
 The Python analyzer uses two stages: `gpt-5.2` calls `/responses` with `web_search_preview` to research each unique company, then `gpt-5.6-luna` analyzes the profile using that research. Research is persisted in `company-research-cache.json`, which is ignored by Git, so later runs reuse existing results instead of searching the same company again. Use `--refresh-research` after changing the research model if you want existing cached companies researched again with the new model. Use `--research-model` to change the research model, `--research-cache` to choose another cache file, or `--no-web-search` to disable searching intentionally.

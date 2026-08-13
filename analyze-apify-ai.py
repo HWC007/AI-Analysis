@@ -192,10 +192,23 @@ def main():
     parser.add_argument("--refresh-research", action="store_true", help="Ignore existing cached company research")
     parser.add_argument("--workers", type=int, default=4, help="Concurrent web research/analysis workers")
     parser.add_argument("--limit", type=int, default=0, help="Maximum number of target profiles to process; 0 means all")
+    parser.add_argument("--ids", default="", help="Comma-separated row IDs to reanalyze selectively")
     parser.add_argument("--batch-size", type=int, default=10); parser.add_argument("--max-retries", type=int, default=3); parser.add_argument("--reanalyze-all", action="store_true")
     args = parser.parse_args()
     with open(args.input, newline="", encoding="utf-8-sig") as f: rows = list(csv.DictReader(f))
-    targets = [r for r in rows if args.reanalyze_all or not r.get("AI_Judgement", "").strip() or r.get("AI_Judgement") == "Error" or not r.get("AI_Explanation", "").strip()]
+    if args.ids and args.reanalyze_all:
+        raise RuntimeError("Use either --ids or --reanalyze-all, not both.")
+    if args.ids:
+        requested_ids = {part.strip() for part in args.ids.split(",") if part.strip()}
+        if not requested_ids or not all(item.isdigit() for item in requested_ids):
+            raise RuntimeError("--ids must be a comma-separated list of numeric row IDs.")
+        targets = [r for r in rows if str(r.get("id", "")).strip() in requested_ids]
+        found_ids = {str(r.get("id", "")).strip() for r in targets}
+        missing_ids = sorted(requested_ids - found_ids, key=int)
+        if missing_ids:
+            raise RuntimeError("Requested ID(s) not found: " + ", ".join(missing_ids))
+    else:
+        targets = [r for r in rows if args.reanalyze_all or not r.get("AI_Judgement", "").strip() or r.get("AI_Judgement") == "Error" or not r.get("AI_Explanation", "").strip()]
     if args.limit > 0:
         targets = targets[:args.limit]
     key = token_value(args.api_key, args.api_key_file); print(f"Profiles to analyze: {len(targets)}")
