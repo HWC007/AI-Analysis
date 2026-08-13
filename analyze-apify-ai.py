@@ -181,6 +181,12 @@ def show_progress(label, completed, total, started_at, workers, extra=""):
         print()
 
 
+def chunks(items, size):
+    """Yield fixed-size slices so only one group of analysis futures is active."""
+    for start in range(0, len(items), size):
+        yield items[start:start + size]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", default=".\\Apify-raw-structured.csv"); parser.add_argument("--output", default=".\\Apify-raw-structured.csv")
@@ -193,8 +199,11 @@ def main():
     parser.add_argument("--workers", type=int, default=4, help="Concurrent web research/analysis workers")
     parser.add_argument("--limit", type=int, default=0, help="Maximum number of target profiles to process; 0 means all")
     parser.add_argument("--ids", default="", help="Comma-separated row IDs to reanalyze selectively")
+    parser.add_argument("--chunk-size", type=int, default=100, help="Rows submitted to the analysis worker pool at one time")
     parser.add_argument("--batch-size", type=int, default=10); parser.add_argument("--max-retries", type=int, default=3); parser.add_argument("--reanalyze-all", action="store_true")
     args = parser.parse_args()
+    if args.chunk_size < 1:
+        raise RuntimeError("--chunk-size must be at least 1.")
     with open(args.input, newline="", encoding="utf-8-sig") as f: rows = list(csv.DictReader(f))
     if args.ids and args.reanalyze_all:
         raise RuntimeError("Use either --ids or --reanalyze-all, not both.")
@@ -236,22 +245,23 @@ def main():
     completed = 0
     started_at = time.monotonic()
     show_progress("AI analysis", 0, len(targets), started_at, args.workers)
-    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-        futures = {pool.submit(process, index, row): index for index, row in enumerate(targets)}
-        for future in as_completed(futures):
-            index = futures[future]
-            try:
-                _, result = future.result()
-                targets[index].update(result)
-                targets[index]["updatedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            except Exception as exc:
-                targets[index]["AI_Judgement"], targets[index]["AI_Weighting"], targets[index]["AI_Explanation"] = "Error", 0, str(exc)
-            completed += 1
-            show_progress("AI analysis", completed, len(targets), started_at, args.workers)
-            if completed % args.batch_size == 0 or completed == len(targets):
-                with open(args.output, "w", newline="", encoding="utf-8-sig") as f:
-                    writer = csv.DictWriter(f, fieldnames=rows[0].keys()); writer.writeheader(); writer.writerows(rows)
-                print(f"Processed {completed} / {len(targets)}")
+    for index_chunk in chunks(range(len(targets)), args.chunk_size):
+        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+            futures = {pool.submit(process, index, targets[index]): index for index in index_chunk}
+            for future in as_completed(futures):
+                index = futures[future]
+                try:
+                    _, result = future.result()
+                    targets[index].update(result)
+                    targets[index]["updatedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                except Exception as exc:
+                    targets[index]["AI_Judgement"], targets[index]["AI_Weighting"], targets[index]["AI_Explanation"] = "Error", 0, str(exc)
+                completed += 1
+                show_progress("AI analysis", completed, len(targets), started_at, args.workers)
+                if completed % args.batch_size == 0 or completed == len(targets):
+                    with open(args.output, "w", newline="", encoding="utf-8-sig") as f:
+                        writer = csv.DictWriter(f, fieldnames=rows[0].keys()); writer.writeheader(); writer.writerows(rows)
+                    print(f"Processed {completed} / {len(targets)}")
     print(f"Saved analysis to {args.output}")
 
 
