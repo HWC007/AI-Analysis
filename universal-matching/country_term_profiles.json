@@ -1,0 +1,55 @@
+{
+  "global": {
+    "legal_words": [
+      "inc", "llc", "corp", "corporation", "holding", "company", "co", "ltd", "limited", "international", "global", "group", "ag", "bv", "nv"
+    ],
+    "generic_terms": [
+      "solutions", "systems", "system", "services", "service", "plastics", "industrial", "automotive", "engineering", "technical", "plastic", "plast"
+    ]
+  },
+  "en": {
+    "legal_words": ["plc", "llp"],
+    "generic_terms": ["engineering", "consulting", "technology", "tech"]
+  },
+  "es": {
+    "legal_words": ["slu", "sl", "slp", "sal", "sa", "sociedad", "anonima"],
+    "generic_terms": ["ingenieria", "tecnica", "mecanica", "procesos", "consultoria"]
+  },
+  "it": {
+    "legal_words": ["spa", "srl", "srls", "sas", "snc", "scarl"],
+    "generic_terms": ["tecnologia", "tecnica", "industria", "servizi", "stampaggio", "stampi", "plastica", "materie plastiche", "meccanica", "ingegneria", "produzione", "automazione", "sistemi", "soluzioni", "componenti"]
+  },
+  "tr": {
+    "legal_words": ["as", "sti"],
+    "generic_terms": ["sanayi", "ticaret", "teknoloji", "muhendislik"]
+  },
+  "de": {
+    "legal_words": ["gmbh", "ag", "kg", "ohg", "ug", "gbr", "ek"],
+    "generic_terms": ["technik", "systeme", "industrie", "kunststoffe", "beratung", "technologie"]
+  },
+  "fr": {
+    "legal_words": ["sa", "sas", "sarl", "sasu", "sci", "snc", "eurl"],
+    "generic_terms": ["ingenierie", "technologie", "services", "industriel", "plastiques", "solutions", "conseil"]
+  },
+  "scandinavia": {
+    "legal_words": ["ab", "as", "aps", "oy", "oyj", "ans", "da"],
+    "generic_terms": ["teknik", "teknologi", "system", "plast", "industri", "radgivning", "solutions", "engineering"]
+  },
+  "cz": {
+    "legal_words": ["sro", "spol s ro", "as", "vos", "ks", "zs", "ops"],
+    "generic_terms": ["technologie", "technika", "plasty", "vyroba", "prumysl", "nastrojarna", "lisovna", "systemy", "sluzby", "rizeni", "poradenstvi", "inzenyrstvi"]
+  },
+  "pl": {
+    "legal_words": [
+      "spolka z ograniczona odpowiedzialnoscia", "sp z oo", "sp zoo", "sp z o o",
+      "spolka akcyjna", "sa", "spolka komandytowa", "spk", "spolka jawna", "spj",
+      "spolka cywilna", "sc"
+    ],
+    "generic_terms": [
+      "technologia", "technologie", "techniczny", "techniczna", "inzynieria", "inzynier",
+      "przemysl", "tworzywa", "tworzywa sztuczne", "produkcja", "produkcyjny", "produkcyjna",
+      "forma", "formy", "narzedzia", "narzedziownia", "wtrysk", "wtryskowe", "wtryskownia",
+      "uslugi", "systemy", "rozwiazania", "automatyka", "motoryzacja", "polska", "poland", "pl"
+    ]
+  }
+}
