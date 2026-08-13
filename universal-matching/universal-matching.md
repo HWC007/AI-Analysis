@@ -120,6 +120,8 @@ the same pattern as `analyzer/analyzer.py`:
 - `--ai-retries 3` retries failed requests with backoff.
 - `--ai-limit 20` is useful for a small, inexpensive test; `0` means all
   eligible candidates.
+- `--resume` reads the existing output checkpoint and skips rows already
+  marked `3 - AI Confirmed` or `AI Review`.
 
 Increase workers cautiously because the API gateway may rate-limit requests.
 Start with:
@@ -127,6 +129,26 @@ Start with:
 ```text
 python universal-matching.py --ai-review --ai-limit 20 --workers 4
 ```
+
+For a long run, use a separate output file and resume it after an interruption:
+
+```text
+python universal-matching.py \
+  --target Account_Target_Check.csv \
+  --prospects prospects.csv \
+  --output prospects-ai-reviewed.csv \
+  --ai-review --workers 8 --ai-chunk-size 25
+
+# After a stop, failure, or machine restart:
+python universal-matching.py \
+  --target Account_Target_Check.csv \
+  --prospects prospects.csv \
+  --output prospects-ai-reviewed.csv \
+  --ai-review --resume --workers 8 --ai-chunk-size 25
+```
+
+The output file is saved after each AI chunk. No decision cache is used;
+checkpointing only preserves completed rows and allows the run to continue.
 
 ### AI configuration
 

@@ -314,6 +314,8 @@ def parse_args():
                         help='Maximum AI jobs submitted at once.')
     parser.add_argument('--ai-retries', type=int, default=3,
                         help='Retries per AI request.')
+    parser.add_argument('--resume', action='store_true',
+                        help='Resume from an existing output checkpoint.')
     return parser.parse_args()
 
 
@@ -347,7 +349,12 @@ def main():
         api_key = load_api_key(args.api_key_file, args.api_key)
 
     target = read_table(args.target, args.target_sheet)
-    prospects = read_table(args.prospects, args.prospect_sheet)
+    output_exists = Path(args.output).is_file()
+    if args.resume and output_exists:
+        prospects = read_table(args.output, args.prospect_sheet)
+        print(f'Resuming from checkpoint: {args.output}')
+    else:
+        prospects = read_table(args.prospects, args.prospect_sheet)
 
     required_target = {args.account_column, args.target_country}
     required_target.update({args.customer_type_column, args.target_column})
@@ -367,13 +374,19 @@ def main():
         lambda row: normalize_name(row[args.company_column], row[args.prospect_country]), axis=1
     )
 
-    results = [
-        get_match(
-            row['__query_norm'], row[args.prospect_country], target,
-            args.target_country, args.account_column
-        )
-        for _, row in prospects.iterrows()
-    ]
+    if args.resume and {'Matched Name', 'Score', 'Type'}.issubset(prospects.columns):
+        results = [
+            (str(row['Matched Name']), float(row['Score'] or 0), str(row['Type']))
+            for _, row in prospects.iterrows()
+        ]
+    else:
+        results = [
+            get_match(
+                row['__query_norm'], row[args.prospect_country], target,
+                args.target_country, args.account_column
+            )
+            for _, row in prospects.iterrows()
+        ]
     prospects['Matched Name'], prospects['Score'], prospects['Type'] = zip(*results)
 
     ai_calls = 0
@@ -382,7 +395,7 @@ def main():
         for position, (_, row) in enumerate(prospects.iterrows()):
             if args.ai_limit and len(jobs) >= args.ai_limit:
                 break
-            if results[position][2] == '1 - Exact':
+            if results[position][2] in {'1 - Exact', '3 - AI Confirmed', 'AI Review'}:
                 continue
             candidates = candidate_matches(
                 row['__query_norm'], row[args.prospect_country], target,
@@ -418,6 +431,9 @@ def main():
                     ai_calls += 1
 
         prospects['Matched Name'], prospects['Score'], prospects['Type'] = zip(*results)
+        checkpoint = prospects.drop(columns=['__query_norm'], errors='ignore').copy()
+        write_table(checkpoint, args.output)
+        print(f'Checkpoint saved after {min(start + len(chunk), len(jobs))} AI jobs: {args.output}')
 
     # Carry Salesforce status fields only for accepted matches. If multiple
     # Salesforce rows share a matched name but disagree on status, leave the
