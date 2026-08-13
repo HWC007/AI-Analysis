@@ -10,13 +10,13 @@ You can store the token in `fetcher\apify-api.txt`, containing only the token. T
 apify_api_your_token_here
 ```
 
-Prepare `fetcher\apify-input.json` based on [apify-input.example.json](apify-input.example.json), replacing the example URL with the LinkedIn URLs to scrape.
+Prepare the local, Git-ignored `fetcher\fetcher-input.json` using the Apify input structure, replacing the example URL with the LinkedIn URLs to scrape.
 
 Run the Python fetcher. Existing output is preserved by default; new profiles are appended, duplicate LinkedIn URLs are skipped, and new AI fields are left blank for the analysis step to populate:
 
 ```text
-python .\fetcher\fetch-apify-linkedin.py `
-  --input .\fetcher\apify-input.json `
+python .\fetcher\fetcher.py `
+  --input .\fetcher\fetcher-input.json `
   --output .\Apify-raw-structured.csv
 ```
 
@@ -29,8 +29,8 @@ The Python fetcher starts the Actor asynchronously, polls its status, and downlo
 Apify accepts at most 500 LinkedIn URLs per Actor run. The fetcher automatically splits a larger `usernames` list into batches of 500, waits for each run to finish, and merges every completed batch into the same output CSV. You only need one command:
 
 ```text
-python .\fetcher\fetch-apify-linkedin.py `
-  --input .\fetcher\apify-input.json `
+python .\fetcher\fetcher.py `
+  --input .\fetcher\fetcher-input.json `
   --output .\Apify-raw-structured.csv `
   --poll-interval 100 `
   --run-timeout 900
@@ -43,7 +43,7 @@ Use `--batch-size` to choose a smaller batch size when needed; it cannot exceed 
 Use `--last-run` when you do not want to start a new Actor run or provide LinkedIn URLs. The fetcher retrieves the latest run, checks its status, waits if necessary, and then appends its dataset:
 
 ```text
-python .\fetcher\fetch-apify-linkedin.py `
+python .\fetcher\fetcher.py `
   --last-run `
   --output .\Apify-raw-structured.csv
 ```
@@ -53,7 +53,7 @@ This mode preserves existing rows and skips duplicate LinkedIn URLs. It does not
 Polling and timeout options:
 
 ```text
-python .\fetcher\fetch-apify-linkedin.py `
+python .\fetcher\fetcher.py `
   --last-run `
   --output .\Apify-raw-structured.csv `
   --poll-interval 10 `

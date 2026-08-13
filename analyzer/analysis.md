@@ -1,11 +1,11 @@
 # GPT-5 prospect analysis
 
-`analyzer\analyze-apify-ai.py` reads the root-level structured CSV, analyzes rows missing AI results through the configured OpenAI-compatible LiteLLM endpoint, and updates the CSV in place. Existing completed results are preserved unless `--reanalyze-all` is used.
+`analyzer\analyzer.py` reads the root-level structured CSV, analyzes rows missing AI results through the configured OpenAI-compatible LiteLLM endpoint, and updates the CSV in place. Existing completed results are preserved unless `--reanalyze-all` is used.
 
 Create `analyzer\openai-api.txt` containing only your LiteLLM virtual key. It is ignored by Git. The script saves after each batch. Do not commit API keys or generated CSV files to a public repository.
 
 ```text
-python .\analyzer\analyze-apify-ai.py `
+python .\analyzer\analyzer.py `
   --input .\Apify-raw-structured.csv `
   --output .\Apify-raw-structured.csv
 ```
@@ -37,19 +37,19 @@ Typical commands:
 
 ```text
 # Analyze only rows without AI results, using GPT-5.2 web research
-python .\analyzer\analyze-apify-ai.py --workers 8
+python .\analyzer\analyzer.py --workers 8
 
 # Reanalyze every row and refresh all cached company research
-python .\analyzer\analyze-apify-ai.py --reanalyze-all --refresh-research --workers 8
+python .\analyzer\analyzer.py --reanalyze-all --refresh-research --workers 8
 
 # Analyze without web search
-python .\analyzer\analyze-apify-ai.py --no-web-search --workers 8
+python .\analyzer\analyzer.py --no-web-search --workers 8
 
 # Reanalyze only selected rows
-python .\analyzer\analyze-apify-ai.py --ids 721,907,1401 --workers 8
+python .\analyzer\analyzer.py --ids 721,907,1401 --workers 8
 
 # Use 100-row analysis chunks explicitly
-python .\analyzer\analyze-apify-ai.py --chunk-size 100 --workers 8
+python .\analyzer\analyzer.py --chunk-size 100 --workers 8
 ```
 
 The Python analyzer uses two stages: `gpt-5.2` calls `/responses` with `web_search_preview` to research each unique company, then `gpt-5.6-luna` analyzes the profile using that research. Research is persisted in `company-research-cache.json`, which is ignored by Git, so later runs reuse existing results instead of searching the same company again. Use `--refresh-research` after changing the research model if you want existing cached companies researched again with the new model. Use `--research-model` to change the research model, `--research-cache` to choose another cache file, or `--no-web-search` to disable searching intentionally.
@@ -57,7 +57,7 @@ The Python analyzer uses two stages: `gpt-5.2` calls `/responses` with `web_sear
 Research and profile analysis run concurrently. The default is 4 workers; lower it if the gateway rate-limits requests, or increase it cautiously:
 
 ```text
-python .\analyzer\analyze-apify-ai.py --workers 4
+python .\analyzer\analyzer.py --workers 4
 ```
 
 Company research is performed once per normalized company name, so multiple profiles at the same company reuse the same research. Use `--refresh-research` to ignore and replace the existing cache. Console output is forced to UTF-8 for European names and accents.
