@@ -16,7 +16,7 @@ Every prospect follows this order:
 4. If no exact match exists, build a small candidate list using shared
    normalized tokens only.
 5. If `--ai-review` is enabled, ask the AI model to adjudicate those candidates.
-6. Copy Salesforce fields only for exact or high-confidence AI-confirmed
+6. Copy Salesforce fields only for exact or AI-confirmed
    matches.
 
 The script does not use general fuzzy or character-similarity matching. Shared
@@ -41,13 +41,10 @@ The prospect columns are preserved and these fields are added or updated:
 | Field | Meaning |
 |---|---|
 | `Matched Name` | Salesforce account selected by exact or AI-confirmed match. |
-| `Score` | `1.0` for exact matches; AI confidence for AI-confirmed/review rows. |
+| `Score` | `1.0` for exact and AI-confirmed matches; `0.0` otherwise. |
 | `Type` | `1 - Exact`, `3 - AI Confirmed`, `Ambiguous`, `AI Review`, or `None`. |
 | `Customer Type Auto` | Copied from Salesforce only for accepted matches. |
 | `Target` | Salesforce `Custom` value, copied only for accepted matches. |
-| `AI Decision` | `match`, `no_match`, `ambiguous`, `error`, or blank. |
-| `AI Confidence` | Model confidence when AI review was used. |
-| `AI Explanation` | Short audit explanation returned by the model. |
 
 If duplicate Salesforce rows agree on customer type and target flag, those two
 status fields may still be copied while the account name remains ambiguous.
@@ -108,11 +105,10 @@ python universal-matching.py \
   --ai-chunk-size 50
 ```
 
-The model must return one of `match`, `no_match`, or `ambiguous`, plus a
-candidate index, confidence, and reason. A match is accepted only when the
-candidate index is valid and confidence meets `--ai-confidence` (default
-`0.80`). AI rejection, ambiguity, errors, and low-confidence matches do not
-receive Salesforce status fields.
+The model must return only one of `match`, `no_match`, or `ambiguous`, plus a
+candidate index. A match is accepted only when the candidate index is valid.
+AI rejection, ambiguity, and failed requests do not receive Salesforce status
+fields. The response is intentionally minimal to reduce token usage.
 
 ### Concurrent processing
 
@@ -153,5 +149,5 @@ Override these with `--base-url`, `--ai-model`, `--api-key-file`, or
 - Generic overlap such as `akcesoria`, `plastics`, `engineering`, or
   `packaging` is insufficient by itself.
 - Ambiguous duplicate Salesforce accounts remain visible for review.
-- Keep the output separate from the source files and inspect `AI Explanation`
-  before acting on AI-confirmed matches.
+- Keep the output separate from the source files and review AI-confirmed rows
+  before acting on them.

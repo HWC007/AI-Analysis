@@ -199,7 +199,7 @@ def ai_review(company, country, candidates, base_url, model, api_key, retries=3,
     system = (
         'You adjudicate company identity for Salesforce account matching. '
         'Return only valid JSON: {"decision":"match|no_match|ambiguous", '
-        '"candidate_index":number|null,"confidence":number,"reason":"short explanation"}. '
+        '"candidate_index":number|null}. '
         'Match only when the distinctive company identity is the same. '
         'Reject shared generic words such as plastics, engineering, packaging, '
         'accessories, systems, or technical. Country and legal suffix differences '
@@ -233,13 +233,12 @@ def ai_review(company, country, candidates, base_url, model, api_key, retries=3,
             content = re.sub(r'^```(?:json)?\s*|\s*```$', '', content, flags=re.IGNORECASE).strip()
             result = json.loads(content)
             decision = str(result.get('decision', '')).lower()
-            confidence = float(result.get('confidence', 0))
             index = result.get('candidate_index')
             if decision not in {'match', 'no_match', 'ambiguous'}:
                 raise ValueError('AI returned an invalid decision')
             if index is not None:
                 index = int(index)
-            return decision, index, confidence, str(result.get('reason', ''))
+            return decision, index
         except Exception:
             if attempt == max(1, retries) - 1:
                 raise
@@ -307,8 +306,6 @@ def parse_args():
                         help='AI adjudication model.')
     parser.add_argument('--ai-candidates', type=int, default=5,
                         help='Maximum candidates sent to AI per prospect.')
-    parser.add_argument('--ai-confidence', type=float, default=0.80,
-                        help='Minimum AI confidence required for a confirmed match.')
     parser.add_argument('--ai-limit', type=int, default=0,
                         help='Maximum AI calls; 0 means all eligible rows.')
     parser.add_argument('--workers', type=int, default=4,
@@ -379,9 +376,6 @@ def main():
     ]
     prospects['Matched Name'], prospects['Score'], prospects['Type'] = zip(*results)
 
-    ai_decisions = [''] * len(prospects)
-    ai_confidences = [''] * len(prospects)
-    ai_explanations = [''] * len(prospects)
     ai_calls = 0
     if args.ai_review:
         jobs = []
@@ -395,7 +389,6 @@ def main():
                 args.target_country, args.account_column, args.ai_candidates
             )
             if not candidates:
-                ai_decisions[position] = 'no_candidates'
                 continue
             jobs.append((position, row[args.company_column], row[args.prospect_country], candidates))
 
@@ -414,25 +407,17 @@ def main():
                     position = futures[future]
                     try:
                         _, candidates, decision_result = future.result()
-                        decision, candidate_index, confidence, reason = decision_result
-                        ai_decisions[position] = decision
-                        ai_confidences[position] = f'{confidence:.3f}'
-                        ai_explanations[position] = reason
-                        if decision == 'match' and candidate_index is not None and confidence >= args.ai_confidence and 0 <= candidate_index < len(candidates):
+                        decision, candidate_index = decision_result
+                        if decision == 'match' and candidate_index is not None and 0 <= candidate_index < len(candidates):
                             chosen = candidates[candidate_index]
-                            results[position] = (chosen['account_name'], confidence, '3 - AI Confirmed')
+                            results[position] = (chosen['account_name'], 1.0, '3 - AI Confirmed')
                         elif decision == 'ambiguous':
-                            results[position] = ('ambiguous account', confidence, 'AI Review')
-                    except Exception as exc:
-                        ai_decisions[position] = 'error'
-                        ai_explanations[position] = str(exc)
+                            results[position] = ('ambiguous account', 0.0, 'AI Review')
+                    except Exception:
+                        pass
                     ai_calls += 1
 
         prospects['Matched Name'], prospects['Score'], prospects['Type'] = zip(*results)
-
-    prospects['AI Decision'] = ai_decisions
-    prospects['AI Confidence'] = ai_confidences
-    prospects['AI Explanation'] = ai_explanations
 
     # Carry Salesforce status fields only for accepted matches. If multiple
     # Salesforce rows share a matched name but disagree on status, leave the
