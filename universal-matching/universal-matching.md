@@ -42,7 +42,7 @@ The prospect columns are preserved and these fields are added or updated:
 |---|---|
 | `Matched Name` | Salesforce account selected by exact or AI-confirmed match. |
 | `Score` | `1.0` for exact and AI-confirmed matches; `0.0` otherwise. |
-| `Type` | `1 - Exact`, `3 - AI Confirmed`, `Ambiguous`, `AI Review`, or `None`. |
+| `Type` | `1 - Exact`, `3 - AI Confirmed`, `4 - AI No Match`, `AI Review`, or `None`. |
 | `Customer Type Auto` | Copied from Salesforce only for accepted matches. |
 | `Target` | Salesforce `Custom` value, copied only for accepted matches. |
 
@@ -121,7 +121,7 @@ the same pattern as `analyzer/analyzer.py`:
 - `--ai-limit 20` is useful for a small, inexpensive test; `0` means all
   eligible candidates.
 - `--resume` reads the existing output checkpoint and skips rows already
-  marked `3 - AI Confirmed` or `AI Review`.
+  marked `1 - Exact`, `3 - AI Confirmed`, `4 - AI No Match`, or `AI Review`.
 
 Increase workers cautiously because the API gateway may rate-limit requests.
 Start with:
@@ -147,8 +147,10 @@ python universal-matching.py \
   --ai-review --resume --workers 8 --ai-chunk-size 25
 ```
 
-The output file is saved after each AI chunk. No decision cache is used;
-checkpointing only preserves completed rows and allows the run to continue.
+The output file is saved after each AI chunk. No timestamp or decision cache is
+required: `Type` is the checkpoint marker. AI no-match results are written as
+`4 - AI No Match`, so they are not sent to the model again after resuming.
+Rows with no `Type`, or rows left in an error state, remain eligible for retry.
 
 ### AI configuration
 

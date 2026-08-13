@@ -395,7 +395,7 @@ def main():
         for position, (_, row) in enumerate(prospects.iterrows()):
             if args.ai_limit and len(jobs) >= args.ai_limit:
                 break
-            if results[position][2] in {'1 - Exact', '3 - AI Confirmed', 'AI Review'}:
+            if results[position][2] in {'1 - Exact', '3 - AI Confirmed', '4 - AI No Match', 'AI Review'}:
                 continue
             candidates = candidate_matches(
                 row['__query_norm'], row[args.prospect_country], target,
@@ -426,6 +426,8 @@ def main():
                             results[position] = (chosen['account_name'], 1.0, '3 - AI Confirmed')
                         elif decision == 'ambiguous':
                             results[position] = ('ambiguous account', 0.0, 'AI Review')
+                        elif decision == 'no_match':
+                            results[position] = ('no similar account', 0.0, '4 - AI No Match')
                     except Exception:
                         pass
                     ai_calls += 1
