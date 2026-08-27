@@ -82,9 +82,18 @@ Evaluate every prospect against all five priorities. Do not stop after finding a
 
 Analyze `Current_Company` and determine whether it participates in the injection-molding lifecycle:
 
-- **Service provider:** designs/builds injection molds, produces molded parts for other companies, or manufactures molding equipment.
+- **Tooling/molding service provider:** designs/builds injection molds, produces molded parts for other companies, or provides mold-tooling engineering, mold trials, or tooling modifications.
+- **Molding-technology provider:** designs or manufactures hot-runner systems, injection-mold cooling channels, conformal-cooling solutions, or other systems integrated directly into injection molds.
+- **Simulation/engineering provider:** provides plastic-part engineering or injection-molding simulation using Moldflow, Cadmould, Moldex3D, or similar tools.
 - **Product manufacturer/OEM:** produces physical products that substantially use plastic components, such as automotive parts, medical devices, electronics, appliances, toys, or industrial equipment.
-- **Simulation/engineering provider:** provides plastic-part engineering or simulation using Moldflow, Cadmould, Moldex3D, or similar tools.
+
+Exclude companies whose main business is only:
+
+- Manufacturing injection-molding machines.
+- Supplying peripheral or auxiliary equipment such as dryers, robots, loaders, chillers, or material-handling systems.
+- General factory automation or production equipment unrelated to mold tooling.
+- Supplying plastics materials without mold, tooling, molded-part, or plastics-engineering services.
+- Providing only mold maintenance, mold repair, or mold servicing without broader mold design, tooling engineering, mold trials, modifications, or molded-part production.
 
 If the profile is not conclusive, web research is required when the configured model or gateway provides web-search capability. Search the company name with relevant terms such as `injection molding`, `plastic parts`, `tooling`, `mold design`, `products`, `manufacturing`, and `engineering`. Prefer the official website and reliable industry sources. Do not guess from the company name alone. State what was searched, summarize the evidence, and explain any remaining uncertainty.
 
@@ -92,9 +101,11 @@ Company involvement alone does not prove that the individual personally performs
 
 ### Priority 2 — Current-position analysis
 
-Analyze `Current_Position`, `Current_Position_Description`, `headline`, and `Current_Tenure`. Determine whether the current role involves injection molding, mold design, plastic-part design, tooling, mold trials, injection-process work, Moldflow, or Cadmould.
+Analyze `Current_Position`, `Current_Position_Description`, `headline`, and `Current_Tenure`. Determine whether the current role involves injection molding, mold design, plastic-part design, tooling, mold trials, injection-process work connected to mold or plastic-part development, Moldflow, Cadmould, hot-runner systems, or mold-cooling solutions.
 
-- For a service provider or simulation/engineering company, apply high inference: a technical or design role may reasonably be involved in molding.
+- Exclude general sales roles, machine setters/operators whose work is limited to machine operation or parameter setting, and technicians whose work does not involve mold tooling, mold trials, mold modifications, plastic-part development, or injection-molding engineering.
+- Sales or technical-sales roles count only when the profile explicitly involves molds, tooling, hot runners, mold-cooling solutions, or injection-molding engineering.
+- For a qualified tooling/molding service provider or simulation/engineering company, CEO, General Manager, CTO, technical leader, or comparable executive may count when the profile indicates responsibility for technical operations, engineering, production, tooling, or molding activities.
 - For an OEM, do not infer involvement from a generic engineering title. Require plastic-specific evidence such as plastic-part design, lightweight components, enclosures, tooling, injection molding, mold trials, Moldflow, or Cadmould.
 
 Explain the exact evidence or why it is insufficient.
