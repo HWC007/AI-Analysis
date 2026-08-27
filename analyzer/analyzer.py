@@ -207,6 +207,8 @@ def main():
     args = parser.parse_args()
     if args.chunk_size < 1:
         raise RuntimeError("--chunk-size must be at least 1.")
+    if args.batch_size < 1:
+        raise RuntimeError("--batch-size must be at least 1.")
     with open(args.input, newline="", encoding="utf-8-sig") as f: rows = list(csv.DictReader(f))
     if args.ids and args.reanalyze_all:
         raise RuntimeError("Use either --ids or --reanalyze-all, not both.")
@@ -226,45 +228,62 @@ def main():
     key = token_value(args.api_key, args.api_key_file); print(f"Profiles to analyze: {len(targets)}")
     cache_path = Path(args.research_cache)
     research_cache = {} if args.refresh_research else load_research_cache(cache_path)
-    companies = {str(row.get("Current_Company", "")).strip().casefold(): str(row.get("Current_Company", "")).strip() for row in targets if str(row.get("Current_Company", "")).strip()}
-    if args.no_web_search:
-        research_cache = {key_name: "Web search disabled by command-line option." for key_name in companies}
-    else:
-        missing = {key_name: company for key_name, company in companies.items() if key_name not in research_cache}
-        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-            futures = {pool.submit(search_company, args.base_url, args.research_model, key, company, args.max_retries): key_name for key_name, company in missing.items()}
-            for future in as_completed(futures):
-                key_name = futures[future]
-                try: research_cache[key_name] = future.result()
-                except Exception as exc: research_cache[key_name] = f"Web research failed: {exc}"
-                save_research_cache(cache_path, research_cache, companies)
-        if not missing:
-            save_research_cache(cache_path, research_cache, companies)
 
     def process(index, row):
         company_key = str(row.get("Current_Company", "")).strip().casefold()
         return index, analyze_one(row, args.base_url, args.model, key, research_cache.get(company_key, "No company research available."), args.max_retries)
 
+    def prepare_research(batch_rows):
+        """Research only companies represented in this batch before analysis."""
+        companies = {
+            str(row.get("Current_Company", "")).strip().casefold(): str(row.get("Current_Company", "")).strip()
+            for row in batch_rows
+            if str(row.get("Current_Company", "")).strip()
+        }
+        if args.no_web_search:
+            for key_name in companies:
+                research_cache[key_name] = "Web search disabled by command-line option."
+            return
+        missing = {key_name: company for key_name, company in companies.items() if key_name not in research_cache}
+        if not missing:
+            return
+        print(f"Researching {len(missing)} new compan{'y' if len(missing) == 1 else 'ies'} for the next {len(batch_rows)} rows...")
+        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+            futures = {
+                pool.submit(search_company, args.base_url, args.research_model, key, company, args.max_retries): key_name
+                for key_name, company in missing.items()
+            }
+            for future in as_completed(futures):
+                key_name = futures[future]
+                try:
+                    research_cache[key_name] = future.result()
+                except Exception as exc:
+                    research_cache[key_name] = f"Web research failed: {exc}"
+        # One cache write per row batch, after all research workers finish.
+        save_research_cache(cache_path, research_cache, companies)
+
     completed = 0
     started_at = time.monotonic()
     show_progress("AI analysis", 0, len(targets), started_at, args.workers)
     for index_chunk in chunks(range(len(targets)), args.chunk_size):
-        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-            futures = {pool.submit(process, index, targets[index]): index for index in index_chunk}
-            for future in as_completed(futures):
-                index = futures[future]
-                try:
-                    _, result = future.result()
-                    targets[index].update(result)
-                    targets[index]["updatedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-                except Exception as exc:
-                    targets[index]["AI_Judgement"], targets[index]["AI_Weighting"], targets[index]["AI_Explanation"] = "Error", 0, str(exc)
-                completed += 1
-                show_progress("AI analysis", completed, len(targets), started_at, args.workers)
-                if completed % args.batch_size == 0 or completed == len(targets):
-                    with open(args.output, "w", newline="", encoding="utf-8-sig") as f:
-                        writer = csv.DictWriter(f, fieldnames=rows[0].keys()); writer.writeheader(); writer.writerows(rows)
-                    print(f"Processed {completed} / {len(targets)}")
+        for batch_indices in chunks(index_chunk, args.batch_size):
+            batch_rows = [targets[index] for index in batch_indices]
+            prepare_research(batch_rows)
+            with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+                futures = {pool.submit(process, index, targets[index]): index for index in batch_indices}
+                for future in as_completed(futures):
+                    index = futures[future]
+                    try:
+                        _, result = future.result()
+                        targets[index].update(result)
+                        targets[index]["updatedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                    except Exception as exc:
+                        targets[index]["AI_Judgement"], targets[index]["AI_Weighting"], targets[index]["AI_Explanation"] = "Error", 0, str(exc)
+                    completed += 1
+                    show_progress("AI analysis", completed, len(targets), started_at, args.workers)
+            with open(args.output, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.DictWriter(f, fieldnames=rows[0].keys()); writer.writeheader(); writer.writerows(rows)
+            print(f"Processed {completed} / {len(targets)}")
     print(f"Saved analysis to {args.output}")
 
 

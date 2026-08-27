@@ -28,8 +28,8 @@ The default endpoint is `http://ai.moldex3d.com:4000/v1` and the default analysi
 | `--workers N` | Number of concurrent research/profile workers. | `4`; use `8` cautiously. |
 | `--limit N` | Process at most N target rows. | `0` means all pending rows. |
 | `--ids ID,...` | Reanalyze only the specified existing row IDs, including rows that already have AI results. | Example: `--ids 721,907,1401`; cannot be combined with `--reanalyze-all`. |
-| `--chunk-size N` | Submit at most N profile rows to the analysis worker pool at one time, then release that group before continuing. | `100` |
-| `--batch-size N` | Save the CSV after every N completed rows. | `10` |
+| `--chunk-size N` | Outer memory boundary. Each chunk is processed as smaller `--batch-size` cycles. | `100` |
+| `--batch-size N` | For each batch, research only newly surfaced companies, cache them, analyze that batch, and save the output. | `10` |
 | `--max-retries N` | Retry failed API requests. | `3` |
 | `--reanalyze-all` | Reprocess every row, including rows with existing AI results. | Off by default; omit it for pending rows only. |
 
@@ -50,9 +50,12 @@ python .\analyzer\analyzer.py --ids 721,907,1401 --workers 8
 
 # Use 100-row analysis chunks explicitly
 python .\analyzer\analyzer.py --chunk-size 100 --workers 8
+
+# Process in 20-row research/analysis batches, saving after every batch
+python .\analyzer\analyzer.py --input .\Poland_202608_New.csv --output .\Poland_202608_New-reanalyzed.csv --research-cache .\company-research-cache.json --reanalyze-all --workers 8 --chunk-size 100 --batch-size 20
 ```
 
-The Python analyzer uses two stages: `gpt-5.2` calls `/responses` with `web_search_preview` to research each unique company, then `gpt-5.6-luna` analyzes the profile using that research. Research is persisted in `company-research-cache.json`, which is ignored by Git, so later runs reuse existing results instead of searching the same company again. Use `--refresh-research` after changing the research model if you want existing cached companies researched again with the new model. Use `--research-model` to change the research model, `--research-cache` to choose another cache file, or `--no-web-search` to disable searching intentionally.
+The Python analyzer processes each batch in two stages: `gpt-5.2` calls `/responses` with `web_search_preview` to research only new companies found in that batch, then `gpt-5.6-luna` analyzes the batch profiles using that research. The batch is saved before the next batch begins. Research is persisted in `company-research-cache.json`, which is ignored by Git, so later runs reuse existing results instead of searching the same company again. Use `--refresh-research` after changing the research model if you want existing cached companies researched again with the new model. Use `--research-model` to change the research model, `--research-cache` to choose another cache file, or `--no-web-search` to disable searching intentionally.
 
 Research and profile analysis run concurrently. The default is 4 workers; lower it if the gateway rate-limits requests, or increase it cautiously:
 
@@ -60,7 +63,7 @@ Research and profile analysis run concurrently. The default is 4 workers; lower 
 python .\analyzer\analyzer.py --workers 4
 ```
 
-Company research is performed once per normalized company name, so multiple profiles at the same company reuse the same research. Use `--refresh-research` to ignore and replace the existing cache. Console output is forced to UTF-8 for European names and accents.
+Company research is performed once per normalized company name, so multiple profiles at the same company reuse the same research. Research and profile analysis both use the configured worker count, but each batch waits for its new-company research to finish before its profile analysis begins. Use `--refresh-research` to ignore and replace the existing cache. Console output is forced to UTF-8 for European names and accents.
 
 ### Progress display
 
@@ -70,7 +73,7 @@ While the analyzer is running, it displays one live terminal progress bar for pr
 AI analysis: [##############................] 46.00% (23/50) | 0.18/s | ETA 2.5m | workers=8
 ```
 
-Company research runs before profile analysis and is cached silently in `company-research-cache.json`. Only the AI analysis bar is displayed, and it counts profile rows—not research batches—so 1,000 rows produce one bar from `0/1000` to `1000/1000`.
+Each batch prints a short research message when it contains new companies, then the single AI-analysis bar continues across all profile rows. With `--batch-size 20`, the analyzer researches and analyzes 20 rows before saving and moving to the next 20; 1,000 rows still produce one overall bar from `0/1000` to `1000/1000`.
 
 ## Analysis task
 
