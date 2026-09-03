@@ -108,14 +108,10 @@ Analyze `Current_Position`, `Current_Position_Description`, `headline`, and `Cur
 
 For Priority 2, count injection-molding work and relevant injection-molding techniques or variants when explicitly supported. Do not require the description to name a particular injection process. Do not count blow molding, thermoforming, rotational molding, or work based exclusively on those processes.
 
-- **Mandatory default exclusions:** Exclude general sales, technical-sales, machine setters/operators, technicians, quality engineers, and production leaders by default.
-- These roles count for Priority 2 **only when `Current_Position_Description` explicitly states** involvement in mold tooling, mold trials, mold modifications, plastic-part development, or injection-molding engineering.
-- `plastic-part development` may involve different injection-molding techniques or variants; do not require a particular injection process to be named. Do not count development based on blow molding, thermoforming, rotational molding, or work based exclusively on those processes.
-- Evidence from the job title, headline, company identity, `Skills`, `about`, previous roles, or web research cannot substitute for explicit evidence in `Current_Position_Description`.
-- Machine operation, parameter setting, production supervision, inspection, quality control, or selling without explicit mold/tooling evidence in `Current_Position_Description` is insufficient.
-- Pure mold-maintenance or mold-repair work does not qualify by itself.
-- For a qualified tooling/molding service provider or simulation/engineering company, CEO, General Manager, CTO, technical leader, or comparable executive may count when the profile indicates responsibility for technical operations, engineering, production, tooling, or molding activities.
-- For an OEM, do not infer involvement from a generic engineering title. Require plastic-specific evidence such as plastic-part design, lightweight components, enclosures, tooling, injection molding, mold trials, Moldflow, or Cadmould.
+- **Default exclusions:** Treat general sales, technical-sales, machine setters/operators, technicians, production leaders, quality engineers, and QA engineers as Priority 2 False by default.
+- **Supporting evidence to remove an exclusion:** An excluded role can become Priority 2 True only when `Current_Position_Description` explicitly states relevant work in mold tooling, mold trials, mold modifications, plastic-part development, or injection-molding engineering. For production, quality, and QA leaders/engineers, the description must specifically state injection-process technology, injection-process optimization, injection-production launch/start-up, mold trials, molding engineering, or mold/tooling-related quality engineering. Evidence from `Current_Position`, headline, `about`, `Skills`, previous roles, or web research cannot remove the exclusion. Generic production supervision, staffing, inspection, CAPA, audits, quality control, cost management, machine operation, parameter setting, or selling is insufficient. Do not count work based on blow molding, thermoforming, or rotational molding; other injection-molding techniques or variants may qualify without naming a specific process. Pure mold-maintenance or mold-repair work does not qualify by itself.
+- **General role list:** Process leaders, CEOs, General Managers, CTOs, technical leaders, and comparable technical or executive roles are not subject to the default exclusion. At a confirmed tooling/molding service provider or simulation/engineering company, they may qualify when the profile indicates responsibility for technical operations, engineering, production, tooling, or molding activities.
+- **OEM/product-manufacturer inference:** For OEMs or product manufacturers, do not infer Priority 2 from a generic engineering, production, quality, or management title. Require current-role evidence of plastic-part design, lightweight components, enclosures, tooling, injection molding, mold trials, Moldflow, Cadmould, or comparable plastic-specific work.
 
 Explain the exact evidence or why it is insufficient.
 
@@ -160,7 +156,7 @@ Apply these values:
 |---|---:|
 | Priority 1 satisfied | 2.0 |
 | Priority 2 satisfied | 2.5 |
-| Priority 3 satisfied **and** Priority 1 or 2 satisfied | 1.0 |
+| Priority 3 satisfied | 1.0 |
 | Priority 4 keyword in another section | 0.05 |
 | Priority 4 keyword only in `Skills` | 0.025 |
 | Priority 5 satisfied | 5.0 |
