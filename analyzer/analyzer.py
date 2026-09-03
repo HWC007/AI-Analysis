@@ -25,7 +25,8 @@ PRIORITY 4 — SOFTWARE: Search case-insensitively for Moldflow, Cadmould, and S
 PRIORITY 5 — MOLDEX: Evaluate this priority ONLY from LinkedIn/profile fields: about, headline, Skills, top_skills, current-position fields, and previous-position fields. Ignore the GPT-5.2 web-research text completely for Priority 5. Moldex3D in LinkedIn content always satisfies Priority 5. If only Moldex appears, satisfy it only when the LinkedIn context refers to molding simulation, CoreTech, CAE, or plastic simulation; do not use web-research mentions or unrelated Moldex products/companies as evidence.
 
 JUDGEMENT: Yes if any of P1, P2, P3, or P5 is true; No only if all four are false. Priority 4 never affects judgement. Before returning No, verify that the explanation does not itself cite qualifying injection molding, molded-plastic production, toolmaking, plastics engineering, or relevant technical leadership. If it does, the corresponding priority must be true. Never use absence of Moldflow/Cadmould/Moldex3D alone to make P1, P2, or P3 false.
-Return only valid JSON. Provide concise but evidence-based explanations for every priority, with separate labeled sections. Target approximately 1,000–1,800 characters and do not exceed 2,500 characters. Include the strongest evidence and important missing evidence; do not repeat the entire profile.''' 
+RESPONSE CONSISTENCY: Keep the original JSON response fields, including the five priority booleans, `judgement`, the Priority 4 location flags, and one complete `explanation` string. In that explanation string, write one detailed evidence-based section for each priority and finish each section with exactly one separate final line in this exact format: `Conclusion: True` or `Conclusion: False`. The conclusion must summarize the explanation immediately above it. Do not place another `Conclusion:` line inside the same priority section. The Python parser will use the five terminal conclusion lines inside the explanation as the authoritative priority decisions and will ignore the independently supplied priority booleans.
+Return only valid JSON. Provide concise but evidence-based explanations for every priority, with separate labeled sections. Target approximately 1,000–1,800 characters and do not exceed 2,500 characters. Include the strongest evidence and important missing evidence; do not repeat the entire profile.'''
 
 
 def token_value(explicit, path):
@@ -51,9 +52,10 @@ def normalize(result):
         # Luna has used several casing/separator variants (for example
         # P1_company_analysis). Accept any object whose key identifies P1-P5.
         prefix = f"p{number}"
+        priority_prefix = f"priority{number}"
         for name, data in result.items():
             normalized = re.sub(r"[^a-z0-9]", "", str(name).lower())
-            if normalized.startswith(prefix) and isinstance(data, dict):
+            if (normalized.startswith(prefix) or normalized.startswith(priority_prefix)) and isinstance(data, dict):
                 return data
         return {}
 
@@ -75,6 +77,35 @@ def normalize(result):
         5: "Priority 5 — Moldex3D/Moldex analysis",
     }
     sections = {n: section(n) for n in range(1, 6)}
+
+    def conclusion_from_text(text, number):
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError(f"AI response is missing an explanation for Priority {number}")
+        matches = re.findall(r"(?im)^\s*Conclusion\s*:\s*(True|False)\s*\.?\s*$", text)
+        if len(matches) != 1:
+            raise RuntimeError(
+                f"Priority {number} must contain exactly one final 'Conclusion: True/False' line; found {len(matches)}"
+            )
+        return matches[0].casefold() == "true"
+
+    # Accept a flat response containing one complete explanation. The
+    # per-priority terminal conclusions, rather than independent booleans,
+    # are authoritative.
+    top_explanation = result.get("explanation") or result.get("overall_explanation") or result.get("final_reasoning")
+    if not any(sections.values()):
+        if not isinstance(top_explanation, str) or not top_explanation.strip():
+            raise RuntimeError("AI response contained no recognizable priority sections or explanation")
+        conclusion_matches = re.findall(r"(?im)^\s*Conclusion\s*:\s*(True|False)\s*\.?\s*$", top_explanation)
+        if len(conclusion_matches) != 5:
+            raise RuntimeError(f"AI explanation must contain exactly five priority conclusions; found {len(conclusion_matches)}")
+        for n, value in enumerate(conclusion_matches, 1):
+            result[f"priority_{n}_satisfied"] = value.casefold() == "true"
+        result["p4_in_skills_only"] = section_flag({"satisfied": result.get("p4_in_skills_only", False)})
+        result["p4_in_other_sections"] = section_flag({"satisfied": result.get("p4_in_other_sections", False)})
+        result["explanation"] = top_explanation.strip()
+        result["judgement"] = "Yes" if any(result[f"priority_{n}_satisfied"] for n in (1, 2, 3, 5)) else "No"
+        return result
+
     for n in range(1, 6):
         result[f"priority_{n}_satisfied"] = section_flag(sections[n])
 
@@ -85,8 +116,11 @@ def normalize(result):
     paragraphs = []
     for n in range(1, 6):
         data = sections[n]
-        evidence = data.get("explanation") or data.get("evidence") or data.get("reasoning") or data.get("details") or "No explanation supplied."
-        paragraphs.append(f"{labels[n]}: {'True' if result[f'priority_{n}_satisfied'] else 'False'} — {evidence}")
+        evidence = data.get("explanation") or data.get("evidence") or data.get("reasoning") or data.get("details")
+        if not evidence:
+            raise RuntimeError(f"AI response is missing an explanation for Priority {n}")
+        result[f"priority_{n}_satisfied"] = conclusion_from_text(evidence, n)
+        paragraphs.append(f"{labels[n]}:\n{evidence.strip()}")
     if result.get("evidence_limitations"):
         paragraphs.append(f"Evidence limitations: {result['evidence_limitations']}")
     if result.get("final_reasoning") or result.get("overall_explanation"):
@@ -126,15 +160,25 @@ def call(base_url, model, key, profile, research, retries):
             time.sleep(min(30, 2 ** (attempt + 1)))
 
 
+def as_bool(value):
+    if isinstance(value, bool): return value
+    if isinstance(value, (int, float)): return value != 0
+    return str(value).strip().lower() in {"true", "yes", "1"}
+
+
 def analyze_one(row, base_url, model, key, research, retries):
     profile = {k: (re.sub("\\u00b7", "-", str(v)) if k.endswith("Tenure") else str(v)) for k, v in row.items() if k not in {"AI_Judgement", "AI_Weighting", "AI_Explanation", "createdAt", "updatedAt"}}
     result = call(base_url, model, key, profile, research, retries)
-    p1, p2, p3, p4, p5 = (bool(result.get(k)) for k in ["priority_1_satisfied", "priority_2_satisfied", "priority_3_satisfied", "priority_4_satisfied", "priority_5_satisfied"])
-    p4_score = 0.05 if result.get("p4_in_other_sections") else 0.025 if result.get("p4_in_skills_only") else 0
+    p1, p2, p3 = (as_bool(result.get(k, False)) for k in ["priority_1_satisfied", "priority_2_satisfied", "priority_3_satisfied"])
+    p4 = as_bool(result.get("priority_4_satisfied", False)); p5 = as_bool(result.get("priority_5_satisfied", False))
+    p4_skills_only = as_bool(result.get("p4_in_skills_only", False))
+    p4_other = as_bool(result.get("p4_in_other_sections", False))
+    explanation = result.get("explanation", "")
+    p4_score = 0.05 if p4_other else 0.025 if p4_skills_only else 0
     return {
         "AI_Judgement": "Yes" if p1 or p2 or p3 or p5 else "No",
         "AI_Weighting": round((2 if p1 else 0) + (2.5 if p2 else 0) + (1 if p3 else 0) + p4_score + (5 if p5 else 0), 3),
-        "AI_Explanation": result.get("explanation", ""),
+        "AI_Explanation": explanation,
     }
 
 

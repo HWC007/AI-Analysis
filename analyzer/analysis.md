@@ -55,7 +55,9 @@ python .\analyzer\analyzer.py --chunk-size 100 --workers 8
 python .\analyzer\analyzer.py --input .\Poland_202608_New.csv --output .\Poland_202608_New-reanalyzed.csv --research-cache .\company-research-cache.json --reanalyze-all --workers 8 --chunk-size 100 --batch-size 20
 ```
 
-The Python analyzer processes each batch in two stages: `gpt-5.2` calls `/responses` with `web_search_preview` to research only new companies found in that batch, then `gpt-5.6-luna` analyzes the batch profiles using that research. The batch is saved before the next batch begins. Research is persisted in `company-research-cache.json`, which is ignored by Git, so later runs reuse existing results instead of searching the same company again. Use `--refresh-research` after changing the research model if you want existing cached companies researched again with the new model. Use `--research-model` to change the research model, `--research-cache` to choose another cache file, or `--no-web-search` to disable searching intentionally.
+The Python analyzer processes each batch in two stages: `gpt-5.2` calls `/responses` with `web_search_preview` to research only new companies found in that batch, then `gpt-5.6-luna` analyzes the batch profiles using that research. For each priority, Luna must put exactly one final `Conclusion: True` or `Conclusion: False` line at the end of its explanation. Python extracts those five conclusion lines and uses them as the authoritative priority decisions; the independently supplied five AI priority booleans and `judgement` field are ignored when calculating the final result. Python then calculates `AI_Judgement` and `AI_Weighting` from the extracted conclusions. The Priority 4 location flags (`p4_in_skills_only` and `p4_in_other_sections`) are still used to calculate the exclusive Priority 4 weighting. Python does not independently keyword-override the AI conclusions for Priority 4 or Priority 5. A missing, ambiguous, or duplicated conclusion causes that response to be retried instead of silently producing a false result. If all retries fail, the row is saved with `AI_Judgement = Error` and the failure message in `AI_Explanation`. The batch is saved before the next batch begins. Research is persisted in `company-research-cache.json`, which is ignored by Git, so later runs reuse existing results instead of searching the same company again. Use `--refresh-research` after changing the research model if you want existing cached companies researched again with the new model. Use `--research-model` to change the research model, `--research-cache` to choose another cache file, or `--no-web-search` to disable searching intentionally.
+
+The response parser accepts both nested priority objects and flat responses with a complete top-level explanation. It preserves valid explanations and retries incomplete or unrecognized responses; missing sections or missing per-priority conclusion lines are never silently converted to `False` or `No explanation supplied.`. For flat responses, Luna’s priority titles and prose are preserved as returned; Python does not add or standardize those titles. For nested responses, Python adds the known priority labels while preserving the supplied evidence text.
 
 Research and profile analysis run concurrently. The default is 4 workers; lower it if the gateway rate-limits requests, or increase it cautiously:
 
@@ -73,7 +75,7 @@ While the analyzer is running, it displays one live terminal progress bar for pr
 AI analysis: [##############................] 46.00% (23/50) | 0.18/s | ETA 2.5m | workers=8
 ```
 
-Each batch prints a short research message when it contains new companies, then the single AI-analysis bar continues across all profile rows. With `--batch-size 20`, the analyzer researches and analyzes 20 rows before saving and moving to the next 20; 1,000 rows still produce one overall bar from `0/1000` to `1000/1000`.
+Each batch prints a short research message when it contains new companies, then the single AI-analysis bar continues across all profile rows. With `--batch-size 20`, the analyzer researches and analyzes 20 rows before saving and moving to the next 20; 1,000 rows still produce one overall bar from `0/1000` to `1000/1000`. The default batch size is 10 unless `--batch-size` is supplied.
 
 ## Analysis task
 
@@ -177,8 +179,20 @@ Return only one valid JSON object, with no markdown or additional text:
   "priority_5_satisfied": true or false,
   "p4_in_skills_only": true or false,
   "p4_in_other_sections": true or false,
-  "explanation": "Detailed explanation with separate labeled sections for Priorities 1–5."
+  "explanation": "Detailed explanation with separate labeled sections for Priorities 1–5. Each section ends with exactly one line: Conclusion: True or Conclusion: False."
 }
 ```
 
-The explanation must be concise but evidence-based, targeting approximately 1,000–1,800 characters and never exceeding 2,500 characters. For each priority, explicitly state `True` or `False`, cite the strongest relevant fields or web research, explain the reasoning, and mention important missing evidence without repeating the entire profile.
+The explanation must be concise but evidence-based, targeting approximately 1,000–1,800 characters and never exceeding 2,500 characters. For each priority, cite the strongest relevant fields or web research, explain the reasoning, mention important missing evidence without repeating the entire profile, and finish the section with exactly one terminal conclusion line. The JSON priority booleans remain required for compatibility, but Python ignores them when calculating the final result and instead extracts the terminal conclusion from each explanation section.
+
+Required explanation format:
+
+```text
+Priority 1 — Company analysis:
+[Evidence and reasoning]
+Conclusion: True
+
+Priority 2 — Current position analysis:
+[Evidence and reasoning]
+Conclusion: False
+```
