@@ -106,8 +106,14 @@ Company involvement alone does not prove that the individual personally performs
 
 Analyze `Current_Position`, `Current_Position_Description`, `headline`, and `Current_Tenure`. Determine whether the current role involves injection molding, mold design, plastic-part design, tooling, mold trials, injection-process work connected to mold or plastic-part development, Moldflow, Cadmould, hot-runner systems, or mold-cooling solutions.
 
-- Exclude general sales roles, machine setters/operators whose work is limited to machine operation or parameter setting, and technicians whose work does not involve mold tooling, mold trials, mold modifications, plastic-part development, or injection-molding engineering.
-- Sales or technical-sales roles count only when the profile explicitly involves molds, tooling, hot runners, mold-cooling solutions, or injection-molding engineering.
+For Priority 2, count injection-molding work and relevant injection-molding techniques or variants when explicitly supported. Do not require the description to name a particular injection process. Do not count blow molding, thermoforming, rotational molding, or work based exclusively on those processes.
+
+- **Mandatory default exclusions:** Exclude general sales, technical-sales, machine setters/operators, technicians, quality engineers, and production leaders by default.
+- These roles count for Priority 2 **only when `Current_Position_Description` explicitly states** involvement in mold tooling, mold trials, mold modifications, plastic-part development, or injection-molding engineering.
+- `plastic-part development` may involve different injection-molding techniques or variants; do not require a particular injection process to be named. Do not count development based on blow molding, thermoforming, rotational molding, or work based exclusively on those processes.
+- Evidence from the job title, headline, company identity, `Skills`, `about`, previous roles, or web research cannot substitute for explicit evidence in `Current_Position_Description`.
+- Machine operation, parameter setting, production supervision, inspection, quality control, or selling without explicit mold/tooling evidence in `Current_Position_Description` is insufficient.
+- Pure mold-maintenance or mold-repair work does not qualify by itself.
 - For a qualified tooling/molding service provider or simulation/engineering company, CEO, General Manager, CTO, technical leader, or comparable executive may count when the profile indicates responsibility for technical operations, engineering, production, tooling, or molding activities.
 - For an OEM, do not infer involvement from a generic engineering title. Require plastic-specific evidence such as plastic-part design, lightweight components, enclosures, tooling, injection molding, mold trials, Moldflow, or Cadmould.
 
