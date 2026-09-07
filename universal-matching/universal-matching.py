@@ -19,6 +19,7 @@ DEFAULT_JSON = str(SCRIPT_DIR / 'country_term_profiles.json')
 DEFAULT_API_KEY_FILE = str(SCRIPT_DIR.parent / 'analyzer' / 'openai-api.txt')
 DEFAULT_BASE_URL = 'http://ai.moldex3d.com:4000/v1'
 DEFAULT_AI_MODEL = 'gpt-5.6-luna'
+AI_DEBUG = False
 
 COL_ACCOUNT = "Account Short Name"
 COL_BILLING_COUNTRY = "Billing Country"
@@ -71,6 +72,11 @@ def load_term_profiles(json_path):
 
 # Salesforce uses country names. Profiles use short keys where practical.
 COUNTRY_PROFILE = {
+    'denmark': 'scandinavia',
+    'sweden': 'scandinavia',
+    'norway': 'scandinavia',
+    'finland': 'scandinavia',
+    'iceland': 'scandinavia',
     'poland': 'pl',
     'polska': 'pl',
     'germany': 'de',
@@ -107,6 +113,7 @@ def normalize_name(name, country=None):
         return ''
 
     name = remove_accents(name).replace('\u00a0', ' ').lower()
+    name = re.sub(r'\ba\s*/\s*s\b', 'as', name)
     name = re.sub(r'[_./\\-]', ' ', name)
     name = re.sub(r'[^a-z0-9\s]', ' ', name)
     tokens = name.split()
@@ -136,19 +143,19 @@ def get_match(
         target_df[billing_country_col].fillna('').astype(str).str.strip().str.lower() == country
     ]
     if subset.empty:
-        return 'no similar account', 0.0, 'None'
+        return 'no similar account', 0.0, '0 - None'
 
     exact = subset[subset['__target_norm'] == q_norm]
     if not exact.empty:
         names = exact[account_col].dropna().astype(str).unique().tolist()
         if len(names) == 1:
             return names[0], 1.0, '1 - Exact'
-        return 'ambiguous account', 0.0, 'Ambiguous'
+        return 'ambiguous account', 0.0, '2 - Ambiguous'
 
     # Do not use fuzzy or semantic matching for automatic account assignment.
     # A similar-looking company name is not evidence that two Salesforce
     # records represent the same account.
-    return 'no similar account', 0.0, 'None'
+    return 'no similar account', 0.0, '0 - None'
 
 
 def candidate_matches(q_norm, q_country, target_df, billing_country_col, account_col, limit=5):
@@ -195,7 +202,16 @@ def load_api_key(path, explicit=''):
     return key
 
 
+def debug_ai(message):
+    if AI_DEBUG:
+        print(f'[AI DEBUG] {message}', file=sys.stderr, flush=True)
+
+
 def ai_review(company, country, candidates, base_url, model, api_key, retries=3, timeout=180):
+    debug_ai(
+        f'request model={model} endpoint={base_url} company={company!r} '
+        f'country={country!r} candidates={[candidate["account_name"] for candidate in candidates]!r}'
+    )
     system = (
         'You adjudicate company identity for Salesforce account matching. '
         'Return only valid JSON: {"decision":"match|no_match|ambiguous", '
@@ -228,7 +244,9 @@ def ai_review(company, country, candidates, base_url, model, api_key, retries=3,
         )
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                payload = json.loads(response.read().decode('utf-8'))
+                response_text = response.read().decode('utf-8')
+                debug_ai(f'response status={getattr(response, "status", "unknown")} body={response_text[:1000]!r}')
+                payload = json.loads(response_text)
             content = payload['choices'][0]['message']['content'].strip()
             content = re.sub(r'^```(?:json)?\s*|\s*```$', '', content, flags=re.IGNORECASE).strip()
             result = json.loads(content)
@@ -238,8 +256,10 @@ def ai_review(company, country, candidates, base_url, model, api_key, retries=3,
                 raise ValueError('AI returned an invalid decision')
             if index is not None:
                 index = int(index)
+            debug_ai(f'parsed decision={decision!r} candidate_index={index!r}')
             return decision, index
-        except Exception:
+        except Exception as error:
+            debug_ai(f'error attempt={attempt + 1}/{max(1, retries)} type={type(error).__name__} message={error}')
             if attempt == max(1, retries) - 1:
                 raise
             time.sleep(min(30, 2 ** (attempt + 1)))
@@ -314,6 +334,8 @@ def parse_args():
                         help='Maximum AI jobs submitted at once.')
     parser.add_argument('--ai-retries', type=int, default=3,
                         help='Retries per AI request.')
+    parser.add_argument('--debug-ai', action='store_true',
+                        help='Print safe AI request, response, and error diagnostics.')
     parser.add_argument('--resume', action='store_true',
                         help='Resume from an existing output checkpoint.')
     return parser.parse_args()
@@ -343,6 +365,9 @@ def main():
 
     global TERM_PROFILES
     TERM_PROFILES = load_term_profiles(args.terms)
+
+    global AI_DEBUG
+    AI_DEBUG = args.debug_ai
 
     api_key = None
     if args.ai_review:
@@ -395,7 +420,7 @@ def main():
         for position, (_, row) in enumerate(prospects.iterrows()):
             if args.ai_limit and len(jobs) >= args.ai_limit:
                 break
-            if results[position][2] in {'1 - Exact', '3 - AI Confirmed', '4 - AI No Match', 'AI Review'}:
+            if results[position][2] in {'1 - Exact', '3 - AI Confirmed', '4 - AI No Match', '5 - AI Review'}:
                 continue
             candidates = candidate_matches(
                 row['__query_norm'], row[args.prospect_country], target,
@@ -421,15 +446,20 @@ def main():
                     try:
                         _, candidates, decision_result = future.result()
                         decision, candidate_index = decision_result
-                        if decision == 'match' and candidate_index is not None and 0 <= candidate_index < len(candidates):
-                            chosen = candidates[candidate_index]
-                            results[position] = (chosen['account_name'], 1.0, '3 - AI Confirmed')
+                        if decision == 'match':
+                            if candidate_index is not None and 0 <= candidate_index < len(candidates):
+                                chosen = candidates[candidate_index]
+                                results[position] = (chosen['account_name'], 1.0, '3 - AI Confirmed')
+                            else:
+                                results[position] = ('ambiguous account', 0.0, '5 - AI Review')
                         elif decision == 'ambiguous':
-                            results[position] = ('ambiguous account', 0.0, 'AI Review')
+                            results[position] = ('ambiguous account', 0.0, '5 - AI Review')
                         elif decision == 'no_match':
                             results[position] = ('no similar account', 0.0, '4 - AI No Match')
+                        else:
+                            results[position] = ('ambiguous account', 0.0, '5 - AI Review')
                     except Exception:
-                        pass
+                        results[position] = ('ambiguous account', 0.0, '5 - AI Review')
                     ai_calls += 1
 
         prospects['Matched Name'], prospects['Score'], prospects['Type'] = zip(*results)
@@ -468,7 +498,7 @@ def main():
         )
         if match_type in {'1 - Exact', '3 - AI Confirmed'}:
             values = account_metadata.get(key, set())
-        elif match_type == 'Ambiguous':
+        elif match_type == '2 - Ambiguous':
             values = normalized_metadata.get(
                 (str(prospect[args.prospect_country]).strip().lower(), str(prospect['__query_norm'])),
                 set(),

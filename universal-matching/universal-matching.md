@@ -42,7 +42,7 @@ The prospect columns are preserved and these fields are added or updated:
 |---|---|
 | `Matched Name` | Salesforce account selected by exact or AI-confirmed match. |
 | `Score` | `1.0` for exact and AI-confirmed matches; `0.0` otherwise. |
-| `Type` | `1 - Exact`, `3 - AI Confirmed`, `4 - AI No Match`, `AI Review`, or `None`. |
+| `Type` | `0 - None`, `1 - Exact`, `2 - Ambiguous`, `3 - AI Confirmed`, `4 - AI No Match`, or `5 - AI Review`. |
 | `Customer Type Auto` | Copied from Salesforce only for accepted matches. |
 | `Target` | Salesforce `Custom` value, copied only for accepted matches. |
 
@@ -107,6 +107,10 @@ python universal-matching.py \
 
 The model must return only one of `match`, `no_match`, or `ambiguous`, plus a
 candidate index. A match is accepted only when the candidate index is valid.
+Successful AI results are written as `3 - AI Confirmed`, `4 - AI No Match`, or
+`5 - AI Review`. Failed requests and invalid match results are also written as
+`5 - AI Review`, so submitted AI jobs never silently remain `0 - None`. Rows
+with no candidate accounts are not submitted to AI and can remain `0 - None`.
 AI rejection, ambiguity, and failed requests do not receive Salesforce status
 fields. The response is intentionally minimal to reduce token usage.
 
@@ -120,14 +124,22 @@ the same pattern as `analyzer/analyzer.py`:
 - `--ai-retries 3` retries failed requests with backoff.
 - `--ai-limit 20` is useful for a small, inexpensive test; `0` means all
   eligible candidates.
+- `--debug-ai` prints safe request, response, and error diagnostics without
+  printing the API key or full prospect profiles.
 - `--resume` reads the existing output checkpoint and skips rows already
-  marked `1 - Exact`, `3 - AI Confirmed`, `4 - AI No Match`, or `AI Review`.
+  marked `1 - Exact`, `3 - AI Confirmed`, `4 - AI No Match`, or `5 - AI Review`.
 
 Increase workers cautiously because the API gateway may rate-limit requests.
 Start with:
 
 ```text
 python universal-matching.py --ai-review --ai-limit 20 --workers 4
+```
+
+For a one-row diagnostic test, use one worker and one retry:
+
+```text
+python universal-matching.py --ai-review --ai-limit 1 --workers 1 --ai-retries 1 --debug-ai
 ```
 
 For a long run, use a separate output file and resume it after an interruption:
@@ -150,7 +162,7 @@ python universal-matching.py \
 The output file is saved after each AI chunk. No timestamp or decision cache is
 required: `Type` is the checkpoint marker. AI no-match results are written as
 `4 - AI No Match`, so they are not sent to the model again after resuming.
-Rows with no `Type`, or rows left in an error state, remain eligible for retry.
+Rows with `0 - None`, or rows left in an error state, remain eligible for retry.
 
 ### AI configuration
 
