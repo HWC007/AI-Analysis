@@ -25,6 +25,8 @@ If the profile is not conclusive, web research is required when the configured m
 
 Company involvement alone does not prove that the individual personally performs injection-molding work.
 
+P1 CONCLUSION CONDITION: Set the Priority 1 conclusion to True only when the company meets at least one qualifying definition above. Set it to False when qualification is unconfirmed or the company falls only within an excluded category. Company qualification is company-level evidence only and does not automatically prove that the individual personally performs injection-molding work or qualifies for Priority 2.
+
 ### Priority 2 — Current-position analysis
 
 Analyze `Current_Position`, `Current_Position_Description`, `headline`, and `Current_Tenure`. Determine whether the current role involves injection molding, mold design, plastic-part design, tooling, mold trials, injection-process work connected to mold or plastic-part development, Moldflow, Cadmould, hot-runner systems, or mold-cooling solutions.
@@ -38,11 +40,15 @@ For Priority 2, count injection-molding work and relevant injection-molding tech
 
 Explain the exact evidence or why it is insufficient.
 
+P2 CONCLUSION CONDITION: Set the Priority 2 conclusion to True only when the current role satisfies the applicable exclusion, general-role, or OEM/product-manufacturer rule above. Set it to False when the role is excluded by default, lacks required current-role evidence, or is supported only by company identity, headline, about, Skills, previous roles, or web research.
+
 ### Priority 3 — Previous experience and background
 
 Analyze all three previous positions, descriptions, tenures, `about`, `Skills`, and `top_skills`. Determine whether the prospect has any prior experience with injection molding, injection-mold design, plastic processing, tooling, mold trials, or plastic-part development.
 
 Identify the relevant company, role, time period, description, biography, or skill. If there is no evidence, state what the background contained instead.
+
+P3 CONCLUSION CONDITION: Set the Priority 3 conclusion to True only when credible prior experience or background evidence supports injection molding, mold design, tooling, mold trials, plastics processing, plastic-part development, or relevant plastics engineering. Otherwise set it to False.
 
 ### Priority 4 — Competitor or alternative software
 
@@ -59,6 +65,8 @@ Priority 4 weighting is exclusive—never add both values:
 
 Priority 4 affects weighting only, not the final judgement. Explain the keyword and section where it was found.
 
+P4 CONCLUSION CONDITION: Set the Priority 4 conclusion to True only when at least one qualifying software term is found under the exact rules above. Set it to False when only generic SolidWorks or no qualifying software is found.
+
 ### Priority 5 — Moldex3D false-positive avoidance
 
 Search only the LinkedIn/profile fields for `Moldex3D` and `Moldex`: `about`, `headline`, `Skills`, `top_skills`, current-position fields, and previous-position fields. Do not use GPT-5.2 web-research results as evidence for Priority 5. Web-research mentions must be ignored for this priority.
@@ -68,6 +76,8 @@ Search only the LinkedIn/profile fields for `Moldex3D` and `Moldex`: `about`, `h
 - An unrelated Moldex company, respirator, hearing-protection product, or other non-molding reference does not satisfy Priority 5.
 
 Explain the context, not just the keyword match.
+
+P5 CONCLUSION CONDITION: Set the Priority 5 conclusion to True only when qualifying Moldex3D or contextual Moldex evidence is present in the allowed LinkedIn/profile fields. Otherwise set it to False.
 
 ### Final judgement and weighting
 
