@@ -81,7 +81,7 @@ class RetryCoordinator:
                         else:
                             print(f"Preserved previous valid result for row {row.get('id', '')}: {exc}")
             self.store.save()
-            print(f"{label}: saved {min(start + self.run.batch_size, len(targets))}/{len(targets)} rows")
+            print(f"{label}: saved {min(start + self.run_config.batch_size, len(targets))}/{len(targets)} rows")
         return errors
 
     def _retry_research(self) -> None:
@@ -97,10 +97,16 @@ class RetryCoordinator:
             recovered = [key for key, result in results.items() if result.usable]
             for key in recovered:
                 rows = list({id(row): row for row in self.affected_rows.get(key, [])}.values())
-                for row in rows:
-                    self.status.faulty_rows.pop(str(row.get("id", id(row))), None)
                 del self.status.research_failures[key]
-                self._analyze_pass(rows, f"P1 recovery round {round_number}")
+                new_errors = self._analyze_pass(rows, f"P1 recovery round {round_number}")
+                new_error_ids = {str(row.get("id", id(row))) for row in new_errors}
+                for row in rows:
+                    row_id = str(row.get("id", id(row)))
+                    if row_id not in new_error_ids:
+                        self.status.faulty_rows.pop(row_id, None)
+                for row in new_errors:
+                    row_id = str(row.get("id", id(row)))
+                    self.status.faulty_rows[row_id] = {"row_id": str(row.get("id", ""))}
             if not recovered:
                 print(f"No company research recovered in round {round_number}.")
 

@@ -36,11 +36,23 @@ def parse_response(content: str) -> dict:
             5: "Priority 5 – Moldex3D/Moldex analysis",
         }
         explanation = "\n\n".join(f"{labels[n]}:\n{text}" for n, text in sections.items())
-    conclusions = re.findall(r"(?im)^\s*Conclusion\s*:\s*(True|False)\s*\.?\s*$", explanation)
-    if len(conclusions) != 5:
-        raise RuntimeError(f"AI explanation must contain exactly five conclusions; found {len(conclusions)}")
-    for number, value in enumerate(conclusions, 1):
-        data[f"priority_{number}_satisfied"] = value.casefold() == "true"
+    # Parse terminal conclusions inside their numbered sections. Counting
+    # conclusions globally can silently shift P1-P5 when one section is
+    # missing a conclusion and another contains an extra one.
+    headers = list(re.finditer(r"(?im)^\s*(?:priority\s*|p)([1-5])\b[^\n]*", explanation))
+    numbers = [int(match.group(1)) for match in headers]
+    if numbers != [1, 2, 3, 4, 5]:
+        raise RuntimeError(f"AI explanation must contain Priority sections 1 through 5 in order; found {numbers}")
+    for position, number in enumerate(numbers):
+        start = headers[position].end()
+        end = headers[position + 1].start() if position + 1 < len(headers) else len(explanation)
+        section_text = explanation[start:end]
+        conclusions = re.findall(r"(?im)^\s*Conclusion\s*:\s*(True|False)\s*\.?\s*$", section_text)
+        if len(conclusions) != 1:
+            raise RuntimeError(
+                f"Priority {number} section must contain exactly one terminal conclusion; found {len(conclusions)}"
+            )
+        data[f"priority_{number}_satisfied"] = conclusions[0].casefold() == "true"
     data["explanation"] = explanation.strip()
     data["judgement"] = "Yes" if any(data[f"priority_{n}_satisfied"] for n in (1, 2, 3, 5)) else "No"
     return data
