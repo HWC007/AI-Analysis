@@ -194,21 +194,37 @@ def load_research_cache(path):
         data = json.loads(path.read_text(encoding="utf-8"))
         cache = {}
         for key, value in data.items():
-            cache[key] = value.get("report", "") if isinstance(value, dict) else str(value)
+            if isinstance(value, dict):
+                cache[key] = {
+                    "company": value.get("company", key),
+                    "researched_at": value.get("researched_at", ""),
+                    "report": value.get("report", ""),
+                }
+            else:
+                # Support older cache files that stored only the report text.
+                cache[key] = {"company": key, "researched_at": "", "report": str(value)}
         return cache
     except Exception as exc:
         print(f"Warning: could not load research cache {path}: {exc}", file=sys.stderr)
         return {}
 
 
+def research_report_is_usable(entry):
+    report = entry.get("report", "") if isinstance(entry, dict) else str(entry or "")
+    return bool(report.strip()) and not re.search(
+        r"(?i)web research failed|unable to access the web|web-browsing tool.*(?:failing|error)|can.t complete.*research|found no tool response",
+        report,
+    )
+
+
 def save_research_cache(path, cache, company_names):
     payload = {
         key: {
-            "company": company_names.get(key, key),
-            "researched_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "report": report,
+            "company": entry.get("company") or company_names.get(key, key),
+            "researched_at": entry.get("researched_at", ""),
+            "report": entry.get("report", ""),
         }
-        for key, report in sorted(cache.items())
+        for key, entry in sorted(cache.items())
     }
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -250,17 +266,20 @@ def main():
     parser.add_argument("--research-model", default="gpt-5.2", help="Model used with /responses and web_search_preview")
     parser.add_argument("--no-web-search", action="store_true")
     parser.add_argument("--research-cache", default=".\\company-research-cache.json", help="Persistent JSON file for company research")
-    parser.add_argument("--refresh-research", action="store_true", help="Ignore existing cached company research")
+    parser.add_argument("--refresh-research", action="store_true", help="Refresh companies in the current run while preserving other cache entries")
     parser.add_argument("--workers", type=int, default=4, help="Concurrent web research/analysis workers")
     parser.add_argument("--limit", type=int, default=0, help="Maximum number of target profiles to process; 0 means all")
     parser.add_argument("--ids", default="", help="Comma-separated row IDs to reanalyze selectively")
     parser.add_argument("--chunk-size", type=int, default=100, help="Rows submitted to the analysis worker pool at one time")
     parser.add_argument("--batch-size", type=int, default=10); parser.add_argument("--max-retries", type=int, default=3); parser.add_argument("--reanalyze-all", action="store_true")
+    parser.add_argument("--max-error-rounds", type=int, default=10, help="Maximum complete retry rounds for rows saved with Error")
     args = parser.parse_args()
     if args.chunk_size < 1:
         raise RuntimeError("--chunk-size must be at least 1.")
     if args.batch_size < 1:
         raise RuntimeError("--batch-size must be at least 1.")
+    if args.max_error_rounds < 1:
+        raise RuntimeError("--max-error-rounds must be at least 1.")
     with open(args.input, newline="", encoding="utf-8-sig") as f: rows = list(csv.DictReader(f))
     if args.ids and args.reanalyze_all:
         raise RuntimeError("Use either --ids or --reanalyze-all, not both.")
@@ -279,13 +298,17 @@ def main():
         targets = targets[:args.limit]
     key = token_value(args.api_key, args.api_key_file); print(f"Profiles to analyze: {len(targets)}")
     cache_path = Path(args.research_cache)
-    research_cache = {} if args.refresh_research else load_research_cache(cache_path)
+    # Refresh only the companies in the current run; preserve all other cache entries.
+    research_cache = load_research_cache(cache_path)
+    batch_research = {}
 
     def process(index, row):
         company_key = str(row.get("Current_Company", "")).strip().casefold()
-        return index, analyze_one(row, args.base_url, args.model, key, research_cache.get(company_key, "No company research available."), args.max_retries)
+        research = batch_research.get(company_key, research_cache.get(company_key, {}).get("report", "No company research available."))
+        return index, analyze_one(row, args.base_url, args.model, key, research, args.max_retries)
 
     def prepare_research(batch_rows):
+        nonlocal batch_research
         """Research only companies represented in this batch before analysis."""
         companies = {
             str(row.get("Current_Company", "")).strip().casefold(): str(row.get("Current_Company", "")).strip()
@@ -293,10 +316,17 @@ def main():
             if str(row.get("Current_Company", "")).strip()
         }
         if args.no_web_search:
-            for key_name in companies:
-                research_cache[key_name] = "Web search disabled by command-line option."
+            batch_research = {key_name: "Web search disabled by command-line option." for key_name in companies}
             return
-        missing = {key_name: company for key_name, company in companies.items() if key_name not in research_cache}
+        missing = (
+            companies
+            if args.refresh_research
+            else {
+                key_name: company
+                for key_name, company in companies.items()
+                if key_name not in research_cache or not research_report_is_usable(research_cache[key_name])
+            }
+        )
         if not missing:
             return
         print(f"Researching {len(missing)} new compan{'y' if len(missing) == 1 else 'ies'} for the next {len(batch_rows)} rows...")
@@ -308,37 +338,76 @@ def main():
             for future in as_completed(futures):
                 key_name = futures[future]
                 try:
-                    research_cache[key_name] = future.result()
+                    research_cache[key_name] = {
+                        "company": missing.get(key_name, key_name),
+                        "researched_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                        "report": future.result(),
+                    }
                 except Exception as exc:
-                    research_cache[key_name] = f"Web research failed: {exc}"
+                    # Do not poison the persistent cache with transient search failures.
+                    # An existing report remains available as a fallback.
+                    print(f"Web research failed for {missing.get(key_name, key_name)}: {exc}", file=sys.stderr)
+                    if not research_report_is_usable(research_cache.get(key_name, {})):
+                        research_cache.pop(key_name, None)
+        batch_research = {
+            key_name: research_cache.get(key_name, {}).get("report", "No company research available.")
+            for key_name in companies
+        }
         # One cache write per row batch, after all research workers finish.
         save_research_cache(cache_path, research_cache, companies)
 
-    completed = 0
-    started_at = time.monotonic()
-    show_progress("AI analysis", 0, len(targets), started_at, args.workers)
-    for index_chunk in chunks(range(len(targets)), args.chunk_size):
-        for batch_indices in chunks(index_chunk, args.batch_size):
-            batch_rows = [targets[index] for index in batch_indices]
-            prepare_research(batch_rows)
-            with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-                futures = {pool.submit(process, index, targets[index]): index for index in batch_indices}
-                for future in as_completed(futures):
-                    index = futures[future]
-                    try:
-                        _, result = future.result()
-                        targets[index].update(result)
-                        targets[index]["updatedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-                    except Exception as exc:
-                        targets[index]["AI_Judgement"], targets[index]["AI_Weighting"], targets[index]["AI_Explanation"] = "Error", 0, str(exc)
-                    completed += 1
-                    show_progress("AI analysis", completed, len(targets), started_at, args.workers)
-            with open(args.output, "w", newline="", encoding="utf-8-sig") as f:
-                fieldnames = list(rows[0].keys())
-                if "updatedAt" not in fieldnames:
-                    fieldnames.append("updatedAt")
-                writer = csv.DictWriter(f, fieldnames=fieldnames); writer.writeheader(); writer.writerows(rows)
-            print(f"Processed {completed} / {len(targets)}")
+    def save_output():
+        with open(args.output, "w", newline="", encoding="utf-8-sig") as f:
+            fieldnames = list(rows[0].keys())
+            if "updatedAt" not in fieldnames:
+                fieldnames.append("updatedAt")
+            writer = csv.DictWriter(f, fieldnames=fieldnames); writer.writeheader(); writer.writerows(rows)
+
+    def run_round(round_targets, round_number):
+        nonlocal batch_research
+        completed = 0
+        started_at = time.monotonic()
+        show_progress(f"AI analysis round {round_number}", 0, len(round_targets), started_at, args.workers)
+        for index_chunk in chunks(range(len(round_targets)), args.chunk_size):
+            for batch_indices in chunks(index_chunk, args.batch_size):
+                batch_rows = [round_targets[index] for index in batch_indices]
+                batch_research = {}
+                prepare_research(batch_rows)
+                with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+                    futures = {pool.submit(process, index, round_targets[index]): index for index in batch_indices}
+                    for future in as_completed(futures):
+                        index = futures[future]
+                        row = round_targets[index]
+                        try:
+                            _, result = future.result()
+                            row.update(result)
+                            row["updatedAt"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+                        except Exception as exc:
+                            # Never destroy a previously valid result because a later retry failed.
+                            if row.get("AI_Judgement") not in {"Yes", "No"} or not row.get("AI_Explanation", "").strip():
+                                row["AI_Judgement"], row["AI_Weighting"], row["AI_Explanation"] = "Error", 0, str(exc)
+                            else:
+                                print(f"Retry failed for row {row.get('id', index)}; preserving its previous result: {exc}", file=sys.stderr)
+                        completed += 1
+                        show_progress(f"AI analysis round {round_number}", completed, len(round_targets), started_at, args.workers)
+                save_output()
+                print(f"Processed {completed} / {len(round_targets)} in round {round_number}")
+        errors = [row for row in round_targets if row.get("AI_Judgement") == "Error"]
+        print(f"Round {round_number} complete: {len(errors)} error row(s) remain.")
+        return errors
+
+    round_targets = targets
+    round_number = 1
+    while round_targets:
+        errors = run_round(round_targets, round_number)
+        if not errors:
+            break
+        if round_number >= args.max_error_rounds:
+            print(f"Stopped after {args.max_error_rounds} error rounds with {len(errors)} error row(s) remaining.", file=sys.stderr)
+            break
+        round_number += 1
+        print(f"Starting retry round {round_number} for {len(errors)} error row(s)...")
+        round_targets = errors
     print(f"Saved analysis to {args.output}")
 
 
