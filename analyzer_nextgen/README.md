@@ -72,6 +72,7 @@ python -m analyzer_nextgen.main --resume .\analyzer_nextgen_runs\<run-id>\checkp
 | `--api-key-file PATH` | File containing the LiteLLM key. | `analyzer\openai-api.txt` |
 | `--base-url URL` | LiteLLM/OpenAI-compatible endpoint. | `http://ai.moldex3d.com:4000/v1` |
 | `--model NAME` | Model for profile analysis. | `gpt-5.6-luna` |
+| `--analysis-prompt PATH` | Five-priority Markdown prompt used for profile analysis. | `analyzer_nextgen\analysis_prompt.md` |
 | `--research-provider NAME` | Research provider adapter. | `openai`, `gemini`, or `generic` |
 | `--research-model NAME` | Model used for company research. | `gpt-5.2` |
 | `--search-context-size SIZE` | Research search context. | `medium` |

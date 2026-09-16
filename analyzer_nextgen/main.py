@@ -33,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--api-key", default="")
     parser.add_argument("--base-url", default="http://ai.moldex3d.com:4000/v1")
     parser.add_argument("--model", default="gpt-5.6-luna")
+    parser.add_argument("--analysis-prompt", default=str(Path(__file__).with_name("analysis_prompt.md")), help="Five-priority analysis prompt Markdown file")
     parser.add_argument("--research-provider", choices=("openai", "gemini", "generic"), default="openai")
     parser.add_argument("--research-model", default="gpt-5.2")
     parser.add_argument("--search-context-size", choices=("low", "medium", "high"), default="medium")
@@ -136,6 +137,7 @@ def main() -> None:
         model=args.model,
         workers=analysis_workers,
         max_retries=args.max_retries,
+        prompt_path=Path(args.analysis_prompt),
     )
     run_config = RunConfig(
         input_path=Path(args.input),
@@ -156,6 +158,7 @@ def main() -> None:
         "output": str(run_config.output_path),
         "base_url": args.base_url,
         "analysis_model": args.model,
+        "analysis_prompt": str(analysis_config.prompt_path),
         "research_provider": args.research_provider,
         "research_model": args.research_model,
         "research_cache": str(research_config.cache_path),
