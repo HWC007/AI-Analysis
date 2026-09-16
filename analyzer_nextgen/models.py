@@ -23,3 +23,4 @@ class RunStatus:
     faulty_rows: dict[str, dict] = field(default_factory=dict)
     research_rounds: int = 0
     analysis_rounds: int = 0
+    status: str = "running"

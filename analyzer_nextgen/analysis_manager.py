@@ -9,9 +9,10 @@ from .response_parser import parse_response
 
 
 class AnalysisManager:
-    def __init__(self, config: AnalysisConfig, api_key: str):
+    def __init__(self, config: AnalysisConfig, api_key: str, logger=None):
         self.config = config
         self.api_key = api_key
+        self.logger = logger
         self.definition_prompt = Path(config.prompt_path).read_text(encoding="utf-8")
 
     def analyze_one(self, row: dict, research: str) -> dict:
@@ -43,6 +44,9 @@ class AnalysisManager:
         )
         last_error = ""
         for attempt in range(1, self.config.max_retries + 1):
+            started = time.monotonic()
+            if self.logger:
+                self.logger.log("analysis_attempt_start", row_id=str(row.get("id", "")), model=self.config.model, attempt=attempt)
             try:
                 with urllib.request.urlopen(request, timeout=180) as response:
                     data = json.loads(response.read().decode())
@@ -56,13 +60,18 @@ class AnalysisManager:
                 p4_other = bool(normalized.get("p4_in_other_sections"))
                 p4_skills = bool(normalized.get("p4_in_skills_only"))
                 p4_score = 0.05 if p4 and p4_other else 0.025 if p4 and p4_skills else 0
-                return {
+                result = {
                     "AI_Judgement": "Yes" if p1 or p2 or p3 or p5 else "No",
                     "AI_Weighting": round((2 if p1 else 0) + (2.5 if p2 else 0) + (1 if p3 else 0) + p4_score + (5 if p5 else 0), 3),
                     "AI_Explanation": normalized["explanation"],
                 }
+                if self.logger:
+                    self.logger.log("analysis_attempt_success", row_id=str(row.get("id", "")), model=self.config.model, attempt=attempt, elapsed_seconds=round(time.monotonic() - started, 3))
+                return result
             except Exception as exc:
                 last_error = str(exc)
+                if self.logger:
+                    self.logger.log("analysis_attempt_failure", row_id=str(row.get("id", "")), model=self.config.model, attempt=attempt, elapsed_seconds=round(time.monotonic() - started, 3), error=last_error)
                 if attempt < self.config.max_retries:
                     time.sleep(min(30, 2 ** (attempt + 1)))
         raise RuntimeError(f"profile analysis failed: {last_error}")

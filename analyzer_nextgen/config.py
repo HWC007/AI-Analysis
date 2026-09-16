@@ -22,7 +22,7 @@ class AnalysisConfig:
     model: str = "gpt-5.6-luna"
     workers: int = 8
     max_retries: int = 3
-    prompt_path: Path = Path(__file__).with_name("analysis.md")
+    prompt_path: Path = Path(__file__).with_name("analysis_prompt.md")
 
 
 @dataclass(frozen=True)
@@ -38,3 +38,5 @@ class RunConfig:
     ids: frozenset[str] | None = None
     reanalyze_all: bool = False
     limit: int = 0
+    run_dir: Path = Path("analyzer_nextgen_runs")
+    resume_checkpoint: Path | None = None

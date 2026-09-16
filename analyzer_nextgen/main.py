@@ -1,11 +1,18 @@
 import argparse
+import json
 import os
+import re
+import signal
+import threading
+from datetime import datetime
 from pathlib import Path
 
 from .analysis_manager import AnalysisManager
+from .checkpoint_store import CheckpointStore
 from .config import AnalysisConfig, ResearchConfig, RunConfig
 from .csv_store import CsvStore
 from .research_manager import ResearchManager
+from .run_logger import RunLogger
 from .retry_coordinator import RetryCoordinator
 
 
@@ -44,6 +51,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ids", default="")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--reanalyze-all", action="store_true")
+    parser.add_argument("--run-dir", default=".\\analyzer_nextgen_runs")
+    parser.add_argument("--resume", default="", help="Resume from an existing checkpoint.json")
     return parser.parse_args()
 
 
@@ -81,9 +90,33 @@ def main() -> None:
     key_path = Path(args.api_key_file)
     api_key = read_key(args.api_key, key_path)
 
+    if args.resume:
+        checkpoint_path = Path(args.resume)
+        run_dir = checkpoint_path.parent
+    else:
+        safe_model = re.sub(r"[^A-Za-z0-9._-]+", "-", args.research_model).strip("-") or "research"
+        run_id = datetime.now().strftime("%Y%m%d_%H%M%S") + f"_{args.research_provider}_{safe_model}"
+        run_dir = Path(args.run_dir) / run_id
+        checkpoint_path = run_dir / "checkpoint.json"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    logger = RunLogger(run_dir / "events.jsonl")
+    checkpoint = CheckpointStore(checkpoint_path)
+    checkpoint_state = checkpoint.load()
+    cancel_event = threading.Event()
+
+    def request_cancel(signum, frame):
+        cancel_event.set()
+        print("Cancellation requested; finishing active work and saving a checkpoint...", flush=True)
+
+    signal.signal(signal.SIGINT, request_cancel)
+    logger.log("run_started", resumed=bool(args.resume), run_dir=str(run_dir))
+
     store = CsvStore(Path(args.input), Path(args.output))
     rows = store.load()
     targets = select_targets(rows, args)
+    completed_from_checkpoint = set(checkpoint_state.get("completed_row_ids", []))
+    if completed_from_checkpoint:
+        targets = [row for row in targets if str(row.get("id", "")) not in completed_from_checkpoint]
     print(f"Next-gen analyzer: {len(targets)} target row(s)")
 
     research_config = ResearchConfig(
@@ -112,21 +145,46 @@ def main() -> None:
         batch_size=args.batch_size,
         chunk_size=args.chunk_size,
         max_error_rounds=args.max_error_rounds,
-        status_report_path=Path(args.status_report) if args.status_report else None,
+        status_report_path=Path(args.status_report) if args.status_report else run_dir / "status.json",
         reanalyze_all=args.reanalyze_all,
         limit=args.limit,
+        run_dir=run_dir,
+        resume_checkpoint=checkpoint_path if args.resume else None,
     )
+    run_config_json = {
+        "input": str(run_config.input_path),
+        "output": str(run_config.output_path),
+        "base_url": args.base_url,
+        "analysis_model": args.model,
+        "research_provider": args.research_provider,
+        "research_model": args.research_model,
+        "research_cache": str(research_config.cache_path),
+        "research_workers": research_workers,
+        "analysis_workers": analysis_workers,
+        "batch_size": args.batch_size,
+        "chunk_size": args.chunk_size,
+        "max_retries": args.max_retries,
+        "max_research_rounds": args.max_research_rounds,
+        "max_error_rounds": args.max_error_rounds,
+        "resumed_from": str(args.resume) if args.resume else None,
+    }
+    (run_dir / "run_config.json").write_text(json.dumps(run_config_json, ensure_ascii=False, indent=2), encoding="utf-8")
     coordinator = RetryCoordinator(
         run_config,
-        ResearchManager(research_config, api_key),
-        AnalysisManager(analysis_config, api_key),
+        ResearchManager(research_config, api_key, logger),
+        AnalysisManager(analysis_config, api_key, logger),
         store,
+        logger=logger,
+        checkpoint=checkpoint,
+        cancel_event=cancel_event,
+        checkpoint_state=checkpoint_state,
     )
     coordinator.run(targets)
-    status_path = run_config.status_report_path or Path(args.output).with_suffix(".status.json")
+    status_path = run_config.status_report_path or run_dir / "status.json"
     coordinator.save_status(status_path, targets)
     print(f"Saved analysis to {args.output}")
     print(f"Saved status report to {status_path}")
+    print(f"Run files saved to {run_dir}")
 
 
 if __name__ == "__main__":

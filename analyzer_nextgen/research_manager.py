@@ -28,9 +28,10 @@ def usable_report(report: str) -> bool:
 
 
 class ResearchManager:
-    def __init__(self, config: ResearchConfig, api_key: str):
+    def __init__(self, config: ResearchConfig, api_key: str, logger=None):
         self.config = config
         self.api_key = api_key
+        self.logger = logger
         self.cache: dict[str, dict] = self._load_cache(config.cache_path)
 
     @staticmethod
@@ -123,13 +124,20 @@ class ResearchManager:
         key = company_key(company)
         last_error = ""
         for attempt in range(1, self.config.max_retries + 1):
+            started = time.monotonic()
+            if self.logger:
+                self.logger.log("research_attempt_start", company=company, model=self.config.model, attempt=attempt)
             try:
                 report = self._request(company)
                 if not usable_report(report):
                     raise RuntimeError("response was empty, a refusal/failure message, or had no source URL")
+                if self.logger:
+                    self.logger.log("research_attempt_success", company=company, model=self.config.model, attempt=attempt, elapsed_seconds=round(time.monotonic() - started, 3))
                 return ResearchResult(key, company, report.strip(), True, attempts=attempt)
             except Exception as exc:
                 last_error = str(exc)
+                if self.logger:
+                    self.logger.log("research_attempt_failure", company=company, model=self.config.model, attempt=attempt, elapsed_seconds=round(time.monotonic() - started, 3), error=last_error)
                 if attempt < self.config.max_retries:
                     time.sleep(min(30, 2 ** (attempt + 1)))
         return ResearchResult(key, company, error=last_error, attempts=self.config.max_retries)
@@ -141,6 +149,8 @@ class ResearchManager:
         }
         if not pending or self.config.no_web_search:
             return {}
+        if self.logger:
+            self.logger.log("research_batch_start", company_count=len(pending), workers=self.config.workers, model=self.config.model)
         results = {}
         with ThreadPoolExecutor(max_workers=max(1, self.config.workers)) as pool:
             futures = {pool.submit(self.research_one, name): key for key, name in pending.items()}
@@ -154,4 +164,6 @@ class ResearchManager:
                         "report": result.report,
                     }
         self.save_cache(companies)
+        if self.logger:
+            self.logger.log("research_batch_complete", company_count=len(pending), successful=sum(result.usable for result in results.values()), failed=sum(not result.usable for result in results.values()))
         return results

@@ -2,6 +2,7 @@ apify-api.txt
 openai-api.txt
 company-research-cache.json
 __pycache__/
+analyzer_nextgen_runs/
 apify-input.json
 fetcher-input.json
 Apify-raw-structured.csv
