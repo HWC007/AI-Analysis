@@ -4,14 +4,8 @@ from pathlib import Path
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
-    last = None
-    for encoding in ("utf-8-sig", "cp950", "cp1252"):
-        try:
-            with path.open("r", encoding=encoding, newline="") as handle:
-                return list(csv.DictReader(handle))
-        except UnicodeDecodeError as exc:
-            last = exc
-    raise last or RuntimeError(f"Cannot read {path}")
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        return list(csv.DictReader(handle))
 
 
 def save_csv(path: Path, rows: list[dict[str, str]]) -> None:

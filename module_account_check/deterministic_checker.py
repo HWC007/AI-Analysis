@@ -102,6 +102,13 @@ def ppu_days(r):
     return int(m.group(1)) * (30 if m.group(2).startswith("month") else 365)
 
 
+def lease_ongoing(r, as_of):
+    if active(r): return True
+    if not won(r): return False
+    started = event_date(r)
+    return bool(started and as_of <= started + timedelta(days=ppu_days(r)))
+
+
 def classify(account_name: str, rows: list[dict], as_of: date) -> Classification:
     ordered = sorted(rows, key=sort_key)
     types = {clean(r.get("Customer Type Auto")) for r in rows}
@@ -125,10 +132,24 @@ def classify(account_name: str, rows: list[dict], as_of: date) -> Classification
     leases = [r for r in ordered if (extreme_lease(r) or legacy_lease(r)) and (won(r) or lost(r) or active(r))]
     royalties = [r for r in usable if royalty(r) and closed_won(r)]
 
-    # Customer transitions are chronological across product channels. A newer
-    # alliance royalty can therefore supersede an older direct-software/MA
-    # relationship instead of losing to a fixed product-type precedence rule.
-    if royalties:
+    # Customer transitions are chronological across product channels, but
+    # alliance is a fallback channel. An active direct relationship always
+    # supersedes alliance activity, even when the royalty opportunity is newer.
+    direct_current = bool(rto_result)
+    if not direct_current and leases:
+        latest_lease = max(leases, key=sort_key)
+        direct_current = lease_ongoing(latest_lease, as_of)
+    if not direct_current and direct:
+        latest_ppu = max((r for r in direct if ppu(r) and closed_won(r)), key=sort_key, default=None)
+        if latest_ppu:
+            start = event_date(latest_ppu)
+            direct_current = bool(start and as_of <= start + timedelta(days=ppu_days(latest_ppu)))
+        latest_ma_for_activity = max(ma_rows, key=sort_key, default=None)
+        if latest_ma_for_activity and (active(latest_ma_for_activity) or closed_won(latest_ma_for_activity)):
+            ma_date = event_date(latest_ma_for_activity)
+            direct_current = direct_current or bool(ma_date and as_of <= ma_date + timedelta(days=365))
+
+    if royalties and not direct_current:
         latest_royalty = max(royalties, key=lambda r: parse_date(r.get("Created Date")) or event_date(r) or date.min)
         royalty_date = parse_date(latest_royalty.get("Created Date")) or event_date(latest_royalty)
         direct_history = direct + leases + ma_rows
@@ -145,7 +166,7 @@ def classify(account_name: str, rows: list[dict], as_of: date) -> Classification
             return Classification("PPU customer", "Ongoing" if start and as_of <= start + timedelta(days=ppu_days(latest_ppu)) else "Expired", {"rule": "latest PPU"})
         if extreme_lease(latest) or legacy_lease(latest):
             latest_lease = max(leases, key=sort_key)
-            return Classification("Leasing customer", "Expired" if lost(latest_lease) else "Ongoing", {"rule": "latest lease"})
+            return Classification("Leasing customer", "Ongoing" if lease_ongoing(latest_lease, as_of) else "Expired", {"rule": "latest lease term"})
 
         latest_ma = max(ma_rows, key=sort_key) if ma_rows else None
         if latest_ma is None: return Classification("Existing buyout software customer", "Expired", {"rule": "completed software purchase without following MA"})

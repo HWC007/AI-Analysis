@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import time
 import urllib.request
+from pathlib import Path
 
 from .deterministic_checker import TYPES, STATUSES
 from .model_config import ModelConfig
@@ -11,13 +12,17 @@ from .model_config import ModelConfig
 class AiChecker:
     def __init__(self, config: ModelConfig, api_key: str, logger=None):
         self.config, self.api_key, self.logger = config, api_key, logger
+        rules_path = Path(__file__).with_name("ai_rules.md")
+        rules = rules_path.read_text(encoding="utf-8") if rules_path.is_file() else ""
         self.system = (
             "Classify one exact account's opportunity history. Return JSON only with "
             "customer_type and maintenance_status. Allowed customer_type values: "
             + ", ".join(sorted(TYPES - {""}))
             + ". Allowed statuses: Ongoing, Expired, or empty. Respect the deterministic "
-            "timeline evidence. An incomplete RTO is RTO customer; completed RTO is buyout. "
-            "A newer alliance royalty can supersede older direct software history. Do not invent evidence."
+            "timeline evidence. Active direct relationships (RTO, MA/buyout, leasing, or PPU) "
+            "always supersede alliance activity. Alliance is selected only when no active direct "
+            "relationship remains. An incomplete RTO is RTO customer; completed RTO is buyout. "
+            "Do not invent evidence.\n\nDetailed classification contract:\n" + rules
         )
 
     def classify(self, account: str, rows: list[dict]) -> dict[str, str]:
