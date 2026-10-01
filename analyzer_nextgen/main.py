@@ -61,14 +61,15 @@ def select_targets(rows: list[dict], args: argparse.Namespace) -> list[dict]:
     if args.ids and args.reanalyze_all:
         raise RuntimeError("Use either --ids or --reanalyze-all, not both.")
     if args.ids:
-        requested = {part.strip() for part in args.ids.split(",") if part.strip()}
-        if not requested or not all(value.isdigit() for value in requested):
+        requested_values = [part.strip() for part in args.ids.split(",") if part.strip()]
+        requested = set(requested_values)
+        if not requested or not all(value.isdigit() for value in requested_values):
             raise RuntimeError("--ids must be a comma-separated list of numeric row IDs.")
         found = {str(row.get("id", "")).strip(): row for row in rows}
         missing = sorted(requested - found.keys(), key=int)
         if missing:
             raise RuntimeError("Requested ID(s) not found: " + ", ".join(missing))
-        targets = [found[value] for value in requested]
+        targets = [found[value] for value in requested_values]
     else:
         targets = [
             row for row in rows

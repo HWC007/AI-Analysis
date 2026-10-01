@@ -15,6 +15,8 @@ class ResearchResult:
     usable: bool = False
     error: str = ""
     attempts: int = 0
+    sources: list[dict] = field(default_factory=list)
+    failure_class: str = ""
 
 
 @dataclass
