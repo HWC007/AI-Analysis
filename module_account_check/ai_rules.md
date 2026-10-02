@@ -36,6 +36,8 @@ Allowed maintenance statuses are `Ongoing`, `Expired`, or an empty string.
    use unrelated cloud subscriptions as leasing. A leasing term is one year by default; use an
    explicit month/year duration in the opportunity name when present. A closed-won lease without
    a current term or later renewal is `Expired`.
+   `Edu` alone and `Edu MA` alone do not change classification. If the same opportunity name
+   contains `Edu`, `MA`, and `Lease`, `Leasing`, or `Rental`, treat that record as leasing.
 6. Treat PPU according to its purchase date and stated usage period; absent an explicit period,
    use one year.
 7. Treat valid buyout software and its MA/upgrade lineage as an existing buyout customer.

@@ -51,6 +51,8 @@ order. Event ordering uses Close Date first and Created Date as the fallback/tie
    - PPU beyond its stated usage period, or one year by default → `Expired`;
    - leasing beyond its stated term, or one year by default → `Expired`;
    - a closed-won lease without a later renewal is not automatically ongoing.
+   - `Edu` records remain under their normal rules. Only an opportunity whose name contains
+     `Edu`, `MA`, and `Lease`/`Leasing`/`Rental` together is treated as a leasing record.
 8. Check alliance only when no active direct relationship remains. A latest closed-won OEM
    royalty created within six months is `Customer by alliance / Ongoing`; an older latest royalty
    is `Customer by alliance / Expired`.

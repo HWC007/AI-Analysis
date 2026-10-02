@@ -8,6 +8,7 @@ from .models import Classification
 TYPES = {"Existing buyout software customer", "RTO customer", "Leasing customer", "PPU customer", "Service/Training customer", "Potential customer", "Customer by alliance", ""}
 STATUSES = {"Ongoing", "Expired", ""}
 ACTIVE = ("A:", "B:", "C:", "D:", "E:")
+COMPLETED_STAGES = {"closed won", "closed pending", "closed lost"}
 BUYOUT_PREFIXES = ("edb", "ed", "pro", "expert", "adv", "aep", "ic")
 
 
@@ -30,7 +31,17 @@ def parse_date(v):
     return None
 
 
-def event_date(r): return parse_date(r.get("Close Date")) or parse_date(r.get("Created Date"))
+def event_date(r):
+    """Return the chronological event date without trusting planned close dates.
+
+    Closed opportunities use their actual Close Date. Open opportunities use
+    Created Date because their Close Date is only a plan and may be years in
+    the future. Closed Lost is included so loss-versus-follow-up comparisons
+    also use the actual completed date.
+    """
+    if stage(r) in COMPLETED_STAGES:
+        return parse_date(r.get("Close Date")) or parse_date(r.get("Created Date"))
+    return parse_date(r.get("Created Date"))
 def sort_key(r): return (event_date(r) or date.min, parse_date(r.get("Created Date")) or date.min)
 def token(text, value): return bool(re.search(rf"(?<![a-z0-9]){re.escape(value)}(?![a-z0-9])", text))
 
@@ -49,6 +60,8 @@ def extreme_lease(r):
 def legacy_lease(r):
     if noise(r): return False
     p, n = product(r), opname(r)
+    if token(n, "edu") and token(n, "ma") and any(token(n, x) for x in ("lease", "leasing", "rental")):
+        return True
     return (p == "moldex3d software - leasing" or p == "moldex3d software") and any(token(n, x) for x in ("lease", "leasing", "rental"))
 
 
@@ -93,6 +106,8 @@ def buyout_prefix(r):
 
 
 def valid_ma(r):
+    if any(token(opname(r), x) for x in ("lease", "leasing", "rental")):
+        return False
     return product(r) == "moldex3d maintenance" or (token(opname(r), "ma") and not token(opname(r), "mat"))
 
 
@@ -103,7 +118,6 @@ def ppu_days(r):
 
 
 def lease_ongoing(r, as_of):
-    if active(r): return True
     if not won(r): return False
     started = event_date(r)
     return bool(started and as_of <= started + timedelta(days=ppu_days(r)))
@@ -129,8 +143,25 @@ def classify(account_name: str, rows: list[dict], as_of: date) -> Classification
     supporting = [r for r in ordered if won(r) and "moldex3d software" in product(r) and product(r) not in {"moldex3d software - rto", "moldex3d software - ppu", "moldex3d software - subscription", "moldex3d software - oem royalty", "moldex3d software - upgrade"}]
     if not direct and supporting and ma_rows: direct = supporting
 
-    leases = [r for r in ordered if (extreme_lease(r) or legacy_lease(r)) and (won(r) or lost(r) or active(r))]
+    leases = [r for r in ordered if (extreme_lease(r) or legacy_lease(r)) and (won(r) or lost(r))]
     royalties = [r for r in usable if royalty(r) and closed_won(r)]
+
+    # MA belongs to the direct software lineage when the account has a
+    # qualifying buyout, upgrade, or leasing history. This allows transitions
+    # such as leasing -> buyout/MA to supersede an older lease. MA-only rows
+    # still cannot create a software customer on their own.
+    buyout_lineage = [
+        r for r in direct
+        if not (ppu(r) or rto(r) or extreme_lease(r) or legacy_lease(r))
+    ]
+    has_software_lineage = bool(buyout_lineage or leases or supporting)
+    lineage_ma = ma_rows if has_software_lineage else []
+    # Keep every qualifying purchase channel in one chronological lineage.
+    # PPU must remain here: a later PPU purchase can supersede an older
+    # buyout/MA history, and a later buyout can supersede an older PPU history.
+    ppu_events = [r for r in direct if ppu(r) and won(r)]
+    rto_events = [r for r in direct if rto(r) and won(r)]
+    direct_events = buyout_lineage + rto_events + leases + ppu_events + lineage_ma
 
     # Customer transitions are chronological across product channels, but
     # alliance is a fallback channel. An active direct relationship always
@@ -139,12 +170,12 @@ def classify(account_name: str, rows: list[dict], as_of: date) -> Classification
     if not direct_current and leases:
         latest_lease = max(leases, key=sort_key)
         direct_current = lease_ongoing(latest_lease, as_of)
-    if not direct_current and direct:
+    if not direct_current and has_software_lineage:
         latest_ppu = max((r for r in direct if ppu(r) and closed_won(r)), key=sort_key, default=None)
         if latest_ppu:
             start = event_date(latest_ppu)
             direct_current = bool(start and as_of <= start + timedelta(days=ppu_days(latest_ppu)))
-        latest_ma_for_activity = max(ma_rows, key=sort_key, default=None)
+        latest_ma_for_activity = max(lineage_ma, key=sort_key, default=None)
         if latest_ma_for_activity and (active(latest_ma_for_activity) or closed_won(latest_ma_for_activity)):
             ma_date = event_date(latest_ma_for_activity)
             direct_current = direct_current or bool(ma_date and as_of <= ma_date + timedelta(days=365))
@@ -152,23 +183,23 @@ def classify(account_name: str, rows: list[dict], as_of: date) -> Classification
     if royalties and not direct_current:
         latest_royalty = max(royalties, key=lambda r: parse_date(r.get("Created Date")) or event_date(r) or date.min)
         royalty_date = parse_date(latest_royalty.get("Created Date")) or event_date(latest_royalty)
-        direct_history = direct + leases + ma_rows
+        direct_history = direct_events
         latest_direct = max(direct_history, key=sort_key) if direct_history else None
         if royalty_date and (latest_direct is None or royalty_date > (event_date(latest_direct) or date.min)):
             return Classification("Customer by alliance", "Ongoing" if as_of - royalty_date <= timedelta(days=183) else "Expired", {"rule": "latest commercial transition to OEM royalty"})
 
-    if direct:
-        latest = max(direct + [r for r in leases if r not in direct], key=sort_key)
+    if direct_events:
+        latest = max(direct_events, key=sort_key)
         if ppu(latest):
             wins = [r for r in direct if ppu(r) and closed_won(r)]
             latest_ppu = max(wins, key=sort_key) if wins else latest
             start = event_date(latest_ppu)
             return Classification("PPU customer", "Ongoing" if start and as_of <= start + timedelta(days=ppu_days(latest_ppu)) else "Expired", {"rule": "latest PPU"})
-        if extreme_lease(latest) or legacy_lease(latest):
+        if leases and (extreme_lease(latest) or legacy_lease(latest)):
             latest_lease = max(leases, key=sort_key)
             return Classification("Leasing customer", "Ongoing" if lease_ongoing(latest_lease, as_of) else "Expired", {"rule": "latest lease term"})
 
-        latest_ma = max(ma_rows, key=sort_key) if ma_rows else None
+        latest_ma = max(lineage_ma, key=sort_key) if lineage_ma else None
         if latest_ma is None: return Classification("Existing buyout software customer", "Expired", {"rule": "completed software purchase without following MA"})
         latest_lost = max((r for r in ma_rows if lost(r)), key=sort_key, default=None)
         if latest_lost:
