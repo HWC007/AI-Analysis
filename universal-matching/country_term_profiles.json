@@ -39,6 +39,10 @@
     "legal_words": ["sro", "spol s ro", "as", "vos", "ks", "zs", "ops"],
     "generic_terms": ["technologie", "technika", "plasty", "vyroba", "prumysl", "nastrojarna", "lisovna", "systemy", "sluzby", "rizeni", "poradenstvi", "inzenyrstvi"]
   },
+  "sk": {
+    "legal_words": ["sro", "spol s ro", "as", "vos", "ks", "druzstvo"],
+    "generic_terms": ["technologia", "technologie", "technicky", "technicka", "plasty", "vyroba", "vyrobny", "priemysel", "vstrekovanie", "lisovanie", "nastroje", "nastrojaren", "sluzby", "riesenia", "automatizacia", "strojaren", "strojarsky", "konstrukcia"]
+  },
   "pl": {
     "legal_words": [
       "spolka z ograniczona odpowiedzialnoscia", "sp z oo", "sp zoo", "sp z o o",

@@ -87,6 +87,8 @@ COUNTRY_PROFILE = {
     'turkey': 'tr',
     'czech republic': 'cz',
     'czechia': 'cz',
+    'slovakia': 'sk',
+    'slovak republic': 'sk',
 }
 
 
@@ -113,7 +115,11 @@ def normalize_name(name, country=None):
         return ''
 
     name = remove_accents(name).replace('\u00a0', ' ').lower()
+    name = re.sub(r'\bs\s*\.\s*r\s*\.\s*o\s*\.?\b', 'sro', name)
     name = re.sub(r'\ba\s*/\s*s\b', 'as', name)
+    name = re.sub(r'\ba\s*\.\s*s\s*\.?\b', 'as', name)
+    name = re.sub(r'\bv\s*\.\s*o\s*\.\s*s\s*\.?\b', 'vos', name)
+    name = re.sub(r'\bk\s*\.\s*s\s*\.?\b', 'ks', name)
     name = re.sub(r'[_./\\-]', ' ', name)
     name = re.sub(r'[^a-z0-9\s]', ' ', name)
     tokens = name.split()
