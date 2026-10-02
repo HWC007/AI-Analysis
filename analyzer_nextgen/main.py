@@ -52,7 +52,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ids", default="")
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--reanalyze-all", action="store_true")
-    parser.add_argument("--run-dir", default=".\\analyzer_nextgen_runs")
+    parser.add_argument("--run-dir", default=str(Path(__file__).with_name("analyzer_nextgen_runs")))
     parser.add_argument("--resume", default="", help="Resume from an existing checkpoint.json")
     return parser.parse_args()
 

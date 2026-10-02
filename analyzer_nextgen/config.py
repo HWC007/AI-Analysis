@@ -38,5 +38,5 @@ class RunConfig:
     ids: frozenset[str] | None = None
     reanalyze_all: bool = False
     limit: int = 0
-    run_dir: Path = Path("analyzer_nextgen_runs")
+    run_dir: Path = Path(__file__).with_name("analyzer_nextgen_runs")
     resume_checkpoint: Path | None = None

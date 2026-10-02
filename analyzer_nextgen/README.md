@@ -47,7 +47,7 @@ Profile analysis remains independently controlled by `--model`.
 
 ## Run folders and resume
 
-Each run creates a folder under `analyzer_nextgen_runs` containing:
+Each run creates a folder under `analyzer_nextgen/analyzer_nextgen_runs` containing:
 
 ```text
 <run-id>/
@@ -60,7 +60,7 @@ Each run creates a folder under `analyzer_nextgen_runs` containing:
 Press `Ctrl+C` to request a graceful stop. On Windows, the coordinator polls active analysis futures every 0.5 seconds so cancellation is detected promptly. Running API requests are not forcibly terminated; they finish or reach their configured timeout. After cancellation is detected, no new work is started and the CSV, research cache, checkpoint, and status report are saved. Resume an interrupted run with:
 
 ```text
-python -m analyzer_nextgen.main --resume .\analyzer_nextgen_runs\<run-id>\checkpoint.json
+python -m analyzer_nextgen.main --resume .\analyzer_nextgen\analyzer_nextgen_runs\<run-id>\checkpoint.json
 ```
 
 ## Command-line options
@@ -88,7 +88,7 @@ python -m analyzer_nextgen.main --resume .\analyzer_nextgen_runs\<run-id>\checkp
 | `--max-research-rounds N` | Complete recovery rounds for unavailable companies. | `3` |
 | `--max-error-rounds N` | Complete recovery rounds for faulty rows. | `10` |
 | `--status-report PATH` | Final status report path. | `<output>.status.json` |
-| `--run-dir PATH` | Root folder for per-run logs, checkpoints, status, and configuration. | `analyzer_nextgen_runs` |
+| `--run-dir PATH` | Root folder for per-run logs, checkpoints, status, and configuration. | `analyzer_nextgen/analyzer_nextgen_runs` |
 | `--resume PATH` | Resume from an existing `checkpoint.json`. | Off by default. |
 | `--ids ID,...` | Analyze only selected row IDs. | Supports targeted tests. |
 | `--limit N` | Limit selected target rows. | `0` means no limit. |
